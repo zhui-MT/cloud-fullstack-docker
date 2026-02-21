@@ -45,3 +45,8 @@
 - 验证不完整时：先补验证，再合入下一轮
 - 需求偏移时：回到 README 目标范围重新对齐
 
+## 6) 自动化执行
+
+- 本地门禁命令：`scripts/review_gate.sh round-name`
+- 快照命令：`scripts/vc_snapshot.sh "chore: snapshot message"`
+- 安全回滚分支：`scripts/vc_rollback.sh baseline-v1`
