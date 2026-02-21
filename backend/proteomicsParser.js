@@ -156,10 +156,19 @@ function inferQuantColumns(headers, rows, metadataColumns) {
   return quantColumns;
 }
 
+function normalizeRowKeys(row) {
+  const normalized = {};
+  for (const [key, value] of Object.entries(row)) {
+    normalized[normalizeHeader(key)] = value;
+  }
+  return normalized;
+}
+
 function firstOf(row, keys) {
   for (const key of keys) {
-    if (row[key] !== undefined && row[key] !== null && String(row[key]).trim() !== '') {
-      return String(row[key]).trim();
+    const normalizedKey = normalizeHeader(key);
+    if (row[normalizedKey] !== undefined && row[normalizedKey] !== null && String(row[normalizedKey]).trim() !== '') {
+      return String(row[normalizedKey]).trim();
     }
   }
   return null;
@@ -171,6 +180,7 @@ function mapRows(sourceTool, entityType, headers, rows) {
   const quantColumns = inferQuantColumns(headers, rows, metadataColumns);
 
   const mappedRows = rows.map((row) => {
+    const normalizedRow = normalizeRowKeys(row);
     const base = {
       entityType,
       sourceTool,
@@ -183,41 +193,41 @@ function mapRows(sourceTool, entityType, headers, rows) {
     };
 
     if (sourceTool === 'FragPipe' && entityType === 'protein') {
-      base.accession = firstOf(row, ['Protein ID', 'Protein']);
-      base.gene = firstOf(row, ['Gene', 'Genes']);
+      base.accession = firstOf(normalizedRow, ['protein id', 'protein']);
+      base.gene = firstOf(normalizedRow, ['gene', 'genes']);
     }
 
     if (sourceTool === 'FragPipe' && entityType === 'peptide') {
-      base.sequence = firstOf(row, ['Peptide Sequence']);
-      base.modifiedSequence = firstOf(row, ['Modified Peptide']) || base.sequence;
-      base.accession = firstOf(row, ['Protein ID', 'Protein']);
-      base.gene = firstOf(row, ['Gene', 'Genes']);
+      base.sequence = firstOf(normalizedRow, ['peptide sequence']);
+      base.modifiedSequence = firstOf(normalizedRow, ['modified peptide']) || base.sequence;
+      base.accession = firstOf(normalizedRow, ['protein id', 'protein']);
+      base.gene = firstOf(normalizedRow, ['gene', 'genes']);
     }
 
     if (sourceTool === 'DIA-NN' && entityType === 'protein') {
-      base.proteinGroup = firstOf(row, ['Protein.Group']);
-      base.accession = firstOf(row, ['Protein.Ids', 'Protein.Group']);
-      base.gene = firstOf(row, ['Genes']);
+      base.proteinGroup = firstOf(normalizedRow, ['protein.group']);
+      base.accession = firstOf(normalizedRow, ['protein.ids', 'protein.group']);
+      base.gene = firstOf(normalizedRow, ['genes']);
     }
 
     if (sourceTool === 'DIA-NN' && entityType === 'peptide') {
-      base.sequence = firstOf(row, ['Stripped.Sequence']);
-      base.modifiedSequence = firstOf(row, ['Modified.Sequence']) || base.sequence;
-      base.proteinGroup = firstOf(row, ['Protein.Group']);
-      base.accession = firstOf(row, ['Protein.Ids', 'Protein.Group']);
-      base.gene = firstOf(row, ['Genes']);
+      base.sequence = firstOf(normalizedRow, ['stripped.sequence']);
+      base.modifiedSequence = firstOf(normalizedRow, ['modified.sequence']) || base.sequence;
+      base.proteinGroup = firstOf(normalizedRow, ['protein.group']);
+      base.accession = firstOf(normalizedRow, ['protein.ids', 'protein.group']);
+      base.gene = firstOf(normalizedRow, ['genes']);
     }
 
     if (sourceTool === 'MaxQuant' && entityType === 'protein') {
-      base.accession = firstOf(row, ['Majority protein IDs', 'Protein IDs']);
-      base.gene = firstOf(row, ['Gene names']);
+      base.accession = firstOf(normalizedRow, ['majority protein ids', 'protein ids']);
+      base.gene = firstOf(normalizedRow, ['gene names']);
     }
 
     if (sourceTool === 'MaxQuant' && entityType === 'peptide') {
-      base.sequence = firstOf(row, ['Sequence']);
-      base.modifiedSequence = firstOf(row, ['Modified sequence']) || base.sequence;
-      base.accession = firstOf(row, ['Leading razor protein', 'Leading proteins']);
-      base.gene = firstOf(row, ['Gene names']);
+      base.sequence = firstOf(normalizedRow, ['sequence']);
+      base.modifiedSequence = firstOf(normalizedRow, ['modified sequence']) || base.sequence;
+      base.accession = firstOf(normalizedRow, ['leading razor protein', 'leading proteins']);
+      base.gene = firstOf(normalizedRow, ['gene names']);
     }
 
     for (const sampleCol of quantColumns) {
@@ -280,6 +290,8 @@ function parseProteomicsFile(content) {
       ...summary,
       warnings: [...parsed.warnings, ...summary.warnings],
     },
+    sampleColumns: mapped.quantColumns,
+    mappedRows: mapped.mappedRows,
     preview: mapped.mappedRows.slice(0, 3),
   };
 }

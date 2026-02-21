@@ -113,3 +113,73 @@ test('same config with fixed seed is reproducible', async () => {
     assert.equal(latestBody.reproducibility_token, firstBody.reproducibility_token);
   });
 });
+
+test('POST /api/config accepts camelCase sessionId field', async () => {
+  await withServer(async (base) => {
+    const response = await fetch(`${base}/api/config`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'sess-camel-case',
+        config: makeValidConfig(),
+      }),
+    });
+
+    assert.equal(response.status, 201);
+    const body = await response.json();
+    assert.equal(body.session_id, 'sess-camel-case');
+    assert.equal(body.config_rev, 1);
+  });
+});
+
+test('GET /api/config/:session_id/revisions and /diff return revision history and changes', async () => {
+  await withServer(async (base) => {
+    const sessionId = 'sess-revisions';
+    const rev1Config = makeValidConfig();
+    const rev2Config = makeValidConfig({
+      normalization: {
+        algorithm: 'quantile',
+        params: {},
+      },
+    });
+
+    const first = await fetch(`${base}/api/config`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionId, config: rev1Config }),
+    });
+    assert.equal(first.status, 201);
+    const firstBody = await first.json();
+    assert.equal(firstBody.config_rev, 1);
+
+    const second = await fetch(`${base}/api/config`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionId, config: rev2Config }),
+    });
+    assert.equal(second.status, 201);
+    const secondBody = await second.json();
+    assert.equal(secondBody.config_rev, 2);
+    assert.notEqual(secondBody.config_hash, firstBody.config_hash);
+
+    const revisions = await fetch(`${base}/api/config/${sessionId}/revisions`);
+    assert.equal(revisions.status, 200);
+    const revisionsBody = await revisions.json();
+    assert.equal(revisionsBody.total, 2);
+    assert.deepEqual(
+      revisionsBody.revisions.map((row) => row.config_rev),
+      [1, 2]
+    );
+
+    const diff = await fetch(`${base}/api/config/${sessionId}/diff?from_rev=1&to_rev=2`);
+    assert.equal(diff.status, 200);
+    const diffBody = await diff.json();
+    assert.equal(diffBody.same, false);
+    assert.ok(diffBody.change_count >= 1);
+    assert.ok(
+      diffBody.changes.some(
+        (change) => change.path === 'normalization.algorithm' && change.from === 'median' && change.to === 'quantile'
+      )
+    );
+  });
+});

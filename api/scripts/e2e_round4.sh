@@ -9,19 +9,14 @@ json_field() {
   local field="$2"
   JSON_INPUT="$json" FIELD_NAME="$field" node -e '
     const obj = JSON.parse(process.env.JSON_INPUT || "{}");
-    const field = process.env.FIELD_NAME || "";
-    const parts = field.split(".");
+    const parts = (process.env.FIELD_NAME || "").split(".");
     let cur = obj;
     for (const part of parts) {
       if (!part) continue;
       cur = cur?.[part];
     }
     if (cur === undefined || cur === null) process.exit(1);
-    if (typeof cur === "object") {
-      process.stdout.write(JSON.stringify(cur));
-    } else {
-      process.stdout.write(String(cur));
-    }
+    process.stdout.write(typeof cur === "object" ? JSON.stringify(cur) : String(cur));
   '
 }
 
@@ -36,8 +31,7 @@ fi
 
 echo "job_id=$job_id"
 
-declare -i max_try=30
-for ((i=1; i<=max_try; i++)); do
+for i in $(seq 1 30); do
   job_resp=$(curl -sS "$API_URL/api/job/$job_id")
   status=$(json_field "$job_resp" "status" || true)
   echo "try=$i status=$status"
@@ -54,8 +48,12 @@ for ((i=1; i<=max_try; i++)); do
     fi
 
     echo "$job_resp"
+    jobs_resp=$(curl -sS "$API_URL/api/jobs?limit=1")
+    total_jobs=$(json_field "$jobs_resp" "total" || true)
+    echo "jobs_total=${total_jobs:-unknown}"
     exit 0
   fi
+
   sleep 1
 done
 

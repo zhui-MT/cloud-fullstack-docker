@@ -12,6 +12,7 @@
     "test:summary": "npm run test:regression && npm run test:performance && node scripts/generate-test-summary.js"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.995.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",

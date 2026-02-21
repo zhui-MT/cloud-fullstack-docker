@@ -24,6 +24,54 @@ function spawnProcess(cmd, args) {
 }
 
 async function runRDeEnrich(payload, appendLog) {
+  if (process.env.R_ENGINE_URL) {
+    try {
+      appendLog('info', `Trying remote r-engine: ${process.env.R_ENGINE_URL}`);
+      const remote = await runViaRemoteEngine(payload, appendLog);
+      appendLog('info', 'Remote r-engine completed');
+      return remote;
+    } catch (error) {
+      appendLog('warn', `Remote r-engine failed, fallback to local Rscript: ${error.message}`);
+    }
+  }
+
+  return runViaLocalRscript(payload, appendLog);
+}
+
+async function runViaRemoteEngine(payload, appendLog) {
+  const base = process.env.R_ENGINE_URL.replace(/\/+$/, '');
+  const url = `${base}/run/de-enrich`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  const raw = await response.text();
+  let parsed = null;
+
+  try {
+    parsed = JSON.parse(raw);
+  } catch (_error) {
+    const err = new Error(`r-engine returned non-json response (status ${response.status})`);
+    err.code = 'R_ENGINE_BAD_RESPONSE';
+    throw err;
+  }
+
+  if (!response.ok || !parsed.ok) {
+    const err = new Error(parsed.error || `r-engine request failed with status ${response.status}`);
+    err.code = 'R_ENGINE_FAILED';
+    throw err;
+  }
+
+  if (appendLog && parsed.meta) {
+    appendLog('info', `[r-engine] ${JSON.stringify(parsed.meta)}`);
+  }
+
+  return parsed.result;
+}
+
+async function runViaLocalRscript(payload, appendLog) {
   const scriptPath = path.resolve(__dirname, '../r/de_enrich.R');
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'de-enrich-'));
   const inputPath = path.join(tempDir, 'input.json');

@@ -38,9 +38,18 @@ function validateAndNormalizeConfig(configInput) {
       continue;
     }
 
+    const validateParams =
+      typeof descriptor === 'function' ? descriptor : descriptor && typeof descriptor.validateParams === 'function'
+        ? descriptor.validateParams
+        : null;
+    if (!validateParams) {
+      errors.push(`${stage}.algorithm "${algorithm}" is misconfigured on server`);
+      continue;
+    }
+
     let params;
     try {
-      params = descriptor.validateParams(stageInput.params || {});
+      params = validateParams(stageInput.params || {});
     } catch (err) {
       errors.push(`${stage}.params invalid: ${err.message}`);
       continue;

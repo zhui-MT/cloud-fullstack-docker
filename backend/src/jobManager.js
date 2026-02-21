@@ -8,7 +8,7 @@ class JobManager {
     this.moduleRunners = moduleRunners;
   }
 
-  createJob(moduleName, payload) {
+  createJob(moduleName, payload, options = {}) {
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
     const job = {
@@ -19,10 +19,20 @@ class JobManager {
       startedAt: null,
       finishedAt: null,
       request: payload,
+      configTrace: options.configTrace || null,
+      executionContext: options.executionContext || null,
       result: null,
       error: null,
       logs: [{ ts: now, level: 'info', message: `Job queued: ${moduleName}` }],
     };
+
+    if (job.configTrace) {
+      job.logs.push({
+        ts: now,
+        level: 'info',
+        message: `Config bound: rev=${job.configTrace.config_rev} hash=${job.configTrace.config_hash}`,
+      });
+    }
 
     this.jobs.set(id, job);
     this.queue.push(id);
@@ -77,7 +87,10 @@ class JobManager {
     appendLog('info', `Job started: ${job.module}`);
 
     try {
-      job.result = await runner(job.request || {}, appendLog);
+      job.result = await runner(job.request || {}, appendLog, job.executionContext || {});
+      if (job.configTrace && job.result && typeof job.result === 'object' && !Array.isArray(job.result)) {
+        job.result.config_trace = job.configTrace;
+      }
       job.status = 'succeeded';
       appendLog('info', 'Job completed');
     } catch (error) {

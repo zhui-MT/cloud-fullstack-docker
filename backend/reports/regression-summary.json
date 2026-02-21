@@ -1,0 +1,10 @@
+{
+  "date": "2026-02-21T14:14:33.844Z",
+  "status": "pass",
+  "checks": [
+    "Same config_rev returns deterministic PCA/correlation data",
+    "Different config_rev changes analysis output",
+    "CSV download includes artifact metadata and config_rev traceability",
+    "PNG payload endpoint returns config_rev metadata for frontend rendering"
+  ]
+}

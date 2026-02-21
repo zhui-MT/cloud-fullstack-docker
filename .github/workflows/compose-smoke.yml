@@ -1,0 +1,51 @@
+name: compose-smoke
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+jobs:
+  backend-and-compose-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Run backend tests
+        working-directory: backend
+        run: npm test
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build r-engine image (Buildx cache)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: r-engine/Dockerfile
+          push: false
+          tags: local/r-engine:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Compose smoke (config + build)
+        env:
+          SKIP_API: "1"
+          DOCKER_BUILDKIT: "1"
+          COMPOSE_DOCKER_CLI_BUILD: "1"
+        run: scripts/compose_smoke.sh

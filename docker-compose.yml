@@ -48,10 +48,27 @@ services:
       timeout: 5s
       retries: 8
 
+  minio-init:
+    image: minio/mc:latest
+    container_name: bioid-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      UPLOAD_BLOB_BACKEND: ${UPLOAD_BLOB_BACKEND}
+      UPLOAD_BLOB_BUCKET: ${UPLOAD_BLOB_BUCKET}
+      UPLOAD_BLOB_POLICY: ${UPLOAD_BLOB_POLICY}
+    volumes:
+      - ./scripts/minio_init.sh:/usr/local/bin/minio_init.sh:ro
+    entrypoint: ["/bin/sh", "/usr/local/bin/minio_init.sh"]
+    restart: "no"
+
   r-engine:
     build:
-      context: ./r-engine
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: r-engine/Dockerfile
     container_name: bioid-r-engine
     ports:
       - "${R_ENGINE_PORT}:8000"
@@ -63,11 +80,11 @@ services:
 
   api:
     build:
-      context: ./api
+      context: ./backend
       dockerfile: Dockerfile
     container_name: bioid-api
     environment:
-      API_PORT: 4000
+      PORT: 4000
       DB_HOST: postgres
       DB_PORT: 5432
       DB_USER: ${POSTGRES_USER}
@@ -75,14 +92,22 @@ services:
       DB_NAME: ${POSTGRES_DB}
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      JOB_QUEUE_MODE: ${JOB_QUEUE_MODE:-bullmq}
+      JOB_STORE_MODE: ${JOB_STORE_MODE:-postgres}
       R_ENGINE_URL: http://r-engine:8000
-      MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
-      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      UPLOAD_BLOB_BACKEND: ${UPLOAD_BLOB_BACKEND}
+      UPLOAD_BLOB_DIR: /app/reports
+      UPLOAD_BLOB_BUCKET: ${UPLOAD_BLOB_BUCKET}
+      UPLOAD_BLOB_PREFIX: ${UPLOAD_BLOB_PREFIX}
+      UPLOAD_BLOB_ENDPOINT: ${UPLOAD_BLOB_ENDPOINT}
+      UPLOAD_BLOB_REGION: ${UPLOAD_BLOB_REGION}
+      UPLOAD_BLOB_ACCESS_KEY_ID: ${UPLOAD_BLOB_ACCESS_KEY_ID}
+      UPLOAD_BLOB_SECRET_ACCESS_KEY: ${UPLOAD_BLOB_SECRET_ACCESS_KEY}
+      UPLOAD_BLOB_FORCE_PATH_STYLE: ${UPLOAD_BLOB_FORCE_PATH_STYLE}
     ports:
       - "${API_PORT}:4000"
     volumes:
-      - ./api:/app
+      - ./backend:/app
       - /app/node_modules
     depends_on:
       postgres:
@@ -93,8 +118,10 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4000/api/health"]
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4000/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
       interval: 15s
       timeout: 5s
       retries: 10
@@ -115,7 +142,7 @@ services:
       api:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:5173"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:5173"]
       interval: 15s
       timeout: 5s
       retries: 10

@@ -31,6 +31,15 @@ if [ ! -f ".env.example" ]; then
 else
   if ! docker compose --env-file .env.example config >/tmp/review_gate_compose.out 2>/tmp/review_gate_compose.err; then
     ERRORS+=("docker compose config failed; inspect /tmp/review_gate_compose.err")
+  else
+    api_context="$(awk '
+      /^  api:/ { in_api=1; next }
+      in_api && /context:/ { print $2; exit }
+      in_api && /^[^ ]/ { in_api=0 }
+    ' /tmp/review_gate_compose.out)"
+    if [[ -z "$api_context" || "$api_context" != */backend ]]; then
+      ERRORS+=("compose api service must build from ./backend (current: ${api_context:-unknown})")
+    fi
   fi
 fi
 

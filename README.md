@@ -1,172 +1,236 @@
 # BioID Proteomics Analyst (Docker)
 
-BioID 蛋白组数据分析平台，目标是对标并达到 **FragPipe-Analyst** 的核心水准，支持在线交互分析、可复现计算与高质量图形下载。
+BioID 蛋白组分析平台（当前为 Phase 5 可发布候选版），支持四类核心图形 API + 前端交互展示，并提供 `PNG/SVG/CSV` 下载与 `config_rev` 追溯。
 
-## 1. Project Goal
+## 1. Phase 5 Scope
 
-本项目用于蛋白组结果表（非原始 RAW/mzML）的一站式分析，支持：
+已完成：
+- 图形 API：`PCA`、`Correlation Heatmap`、`Volcano`、`GO/KEGG Enrichment`
+- 前端交互：分组筛选、阈值滑杆、TopN 切换
+- 下载能力：`PNG` / `SVG` / `CSV`
+- artifact 追溯：下载响应或 payload 包含 `config_rev` 与 artifact 元数据
+- 回归测试 + 性能测试摘要
 
-- 多来源输入：`FragPipe` / `DIA-NN` / `MaxQuant`
-- 多实验类型：`DIA` / `DDA` / `TMT`
-- 在线清洗、归一化、差异分析与富集分析
-- 交互式可视化：`PCA`、`Correlation Heatmap`、`Volcano`、`GO/KEGG`
-- 所有图与结果表可下载（PNG/SVG/CSV）
+## 2. Runtime Architecture
 
-对标站点：https://fragpipe-analyst.nesvilab.org/
+当前仓库可运行栈（docker-compose）：
+- `frontend`：React + Vite
+- `api`：Node.js + Express（构建源：`./backend`）
+- `postgres`：配置与上传元数据
+- `redis`：队列/缓存预留
+- `r-engine`：R runtime（limma + clusterProfiler）
+- `minio`：artifact 存储预留
+- `minio-init`：启动时自动创建 `UPLOAD_BLOB_BUCKET`
 
-## 2. V1 Scope
-
-### In Scope
-- Protein + Peptide 双层分析
-- 参数化数据清洗与预处理（可追溯）
-- 多差异算法可切换
-- GO/KEGG 本地计算（clusterProfiler）
-- 单租户 Docker 私有部署
-
-### Out of Scope (V1)
-- 原始质谱文件搜库流程
-- 自动 PDF/HTML 报告生成
-- 多租户 SaaS 账户体系
-
-## 3. Data Input
-
-支持上传三类工具导出的结果表：
-
-- FragPipe: protein/peptide level tables
-- DIA-NN: protein/precursor(peptide-aggregated) tables
-- MaxQuant: `proteinGroups` / `peptides`
-
-统一内部主键：`UniProt Accession`（优先）
-
-## 4. Data Cleaning & Preprocessing
-
-### 4.1 Filtering
-- contaminant filter
-- reverse/decoy filter
-- low coverage filter
-- low variance filter (optional)
-- minimum peptide count filter (protein-level optional)
-
-### 4.2 Missing Value Imputation
-- `none`
-- `min-half`
-- `left-shift-gaussian`
-- `minprob`
-- `QRILC`
-- `KNN`
-- `SVD`
-- `BPCA`
-- `missForest` (expert mode)
-- `hybrid` (MAR/MNAR split, expert mode)
-
-### 4.3 Normalization
-- `no-normalization`
-- `median`
-- `quantile`
-- `VSN`
-- `cyclic-loess`
-- `TIC`
-- `z-score`
-- `RLR` (optional)
-
-### 4.4 Batch Correction
-- `none`
-- `ComBat`
-- `ComBat-seq`
-- `limma removeBatchEffect`
-- `RUVg/RUVs` (expert mode)
-
-所有参数实时回显，并写入会话配置（`config_rev` + `config_hash`）以保证可复现。
-
-## 5. Differential Expression
-
-可选 DE 引擎：
-
-- `limma`
-- `DEqMS`
-- `MSstats`
-- `SAM`
-- `RankProd`
-
-FDR correction:
-- `BH` (default)
-- `BY`
-- `Bonferroni`
-- `qvalue`
-
-## 6. Visualization & Download
-
-- PCA
-- Correlation heatmap
-- Volcano plot
-- Expression heatmap
-- GO/KEGG enrichment plot
-- Single protein/peptide expression view
-
-下载格式：
-- 图：`PNG` / `SVG`
-- 表：`CSV`
-
-## 7. Architecture
-
-当前 Compose 已扩展为六服务：
-
-- `frontend` (React + Vite)
-- `api` (Node.js + Express)
-- `r-engine` (R + plumber)
-- `redis` (queue/cache)
-- `postgres` (metadata)
-- `minio` (artifacts)
-
-## 8. Quick Start
-
-1. 准备环境变量
+## 3. Quick Start
 
 ```bash
 cd /Users/zhui/Desktop/cs/cloud-fullstack-docker
-cp .env.example .env
-```
-
-2. 启动服务
-
-```bash
 docker compose up -d --build
 ```
 
-3. 验证健康状态
+访问：
+- Frontend: `http://localhost:5173`
+- Backend Health: `http://localhost:4000/api/health`
+
+集成烟测：
 
 ```bash
-docker compose ps
-docker compose logs -f api
+scripts/compose_smoke.sh
 ```
 
-4. 访问入口
+当前烟测包含：
+- `/api/health`
+- `/api/analysis` + artifact 下载
+- `POST /api/session` + `POST /api/upload`
+- `GET /api/upload/:id` + `/mapped-rows` 分页
+- `GET /api/session/:id/uploads` 会话上传列表
+- `DELETE /api/upload/:id` 单条删除与回查
+- `DELETE /api/session/:id/uploads` 批量删除与回查
 
-- Frontend: `http://localhost:5173`
-- API health: `http://localhost:4000/api/health`
-- R engine health: `http://localhost:8000/health`
-- MinIO console: `http://localhost:9001`
+如果只在本机裸跑 `backend`（未启动 postgres），可跳过 health 检查：
 
-## 9. Milestones
+```bash
+SKIP_HEALTH=1 scripts/compose_smoke.sh
+```
 
-1. 输入解析与统一 schema（Protein + Peptide）
-2. QC + Filtering + Imputation + Normalization
-3. DE engines + contrast workflow
-4. GO/KEGG + 图形下载
-5. 对标回归测试 + 性能压测 + 发布
+如只做 compose 配置/构建校验（不跑 API 链路）：
 
-## 10. Acceptance Criteria
+```bash
+SKIP_API=1 scripts/compose_smoke.sh
+```
 
-- 三类输入均可成功解析并进入分析流程
-- 同一配置下重复运行结果一致（固定随机种子）
-- 关键图表可在目标规模数据下满足交互时延
-- 所有结果可追溯到参数版本（config revision）
+如需放宽上传存储模式断言（默认 `blob`）：
 
-## 11. References
+```bash
+EXPECT_STORAGE_MODE=db scripts/compose_smoke.sh
+```
+
+## 4. Key APIs (Phase 5)
+
+### 4.1 Analysis
+
+`GET /api/analysis?config_rev=rev-0005`
+
+返回：
+- `views.pca.data`
+- `views.correlation.data`
+- `views.volcano.data`
+- `views.enrichment.data`
+- 每个 view 含 `downloads.csv/svg/png` 与 `artifact_meta`
+
+### 4.2 Artifact Download
+
+- `GET /api/artifacts/:id/download`：下载 `CSV` 或 `SVG`，响应头包含 `X-Artifact-Meta`
+- `GET /api/artifacts/:id/png`：返回 PNG 渲染 payload（SVG + metadata），由前端转为 PNG 下载
+- `GET /api/artifacts/:id/meta`：查询 artifact 元数据
+
+### 4.3 Session + Upload (Round 2)
+
+- `POST /api/session`：创建会话，返回 `sessionId`
+- `POST /api/upload`：上传结果表并自动识别 `FragPipe / DIA-NN / MaxQuant` 与 `protein/peptide`
+  - 请求格式：`multipart/form-data`
+  - 字段：`file` + `sessionId`（兼容 `session_id`）
+  - 响应包含摘要：`sampleCount`、`entityCount`、`availableColumns`、`warnings`
+  - 完整 `mappedRows` 默认落地到后端 blob 存储（本地文件实现），响应返回 `storage.mode/key`
+- `GET /api/upload/:id`：读取上传解析详情（摘要 + 预览 + 持久化后的统一 schema 行数）
+- `GET /api/upload/:id/mapped-rows?limit=200&offset=0`：分页读取完整标准化行
+- `DELETE /api/upload/:id`：删除上传记录并清理关联 blob（失败时返回 warning 并继续删除 DB 记录）
+- `GET /api/session/:id/uploads?limit=50&offset=0`：按会话分页列出上传历史
+- `DELETE /api/session/:id/uploads`：批量删除该会话下所有上传（含 blob 清理）
+
+示例：
+
+```bash
+curl -X POST http://localhost:4000/api/session \
+  -H 'content-type: application/json' \
+  -d '{"name":"demo-round2"}'
+
+curl -X POST http://localhost:4000/api/upload \
+  -F "sessionId=<your-session-id>" \
+  -F "file=@backend/samples/fragpipe_protein.tsv"
+
+curl http://localhost:4000/api/upload/<upload-id>
+curl "http://localhost:4000/api/upload/<upload-id>/mapped-rows?limit=100&offset=0"
+curl "http://localhost:4000/api/session/<session-id>/uploads?limit=20&offset=0"
+curl -X DELETE "http://localhost:4000/api/upload/<upload-id>"
+curl -X DELETE "http://localhost:4000/api/session/<session-id>/uploads"
+```
+
+Blob 存储切换（MinIO/S3）：
+
+```bash
+export UPLOAD_BLOB_BACKEND=s3
+export UPLOAD_BLOB_BUCKET=bioid-artifacts
+export UPLOAD_BLOB_ENDPOINT=http://localhost:9000
+export UPLOAD_BLOB_REGION=us-east-1
+export UPLOAD_BLOB_ACCESS_KEY_ID=minioadmin
+export UPLOAD_BLOB_SECRET_ACCESS_KEY=minioadmin123
+export UPLOAD_BLOB_FORCE_PATH_STYLE=true
+export UPLOAD_BLOB_POLICY=private
+```
+
+启用后，`POST /api/upload` 返回 `storage.mode=blob` 且 `mappedRows` 通过对象存储读写。
+
+如果不使用对象存储，可切回本地文件模式：
+
+```bash
+export UPLOAD_BLOB_BACKEND=fs
+export UPLOAD_BLOB_DIR=./backend/reports
+```
+
+## 5. Reproducibility
+
+- 同一 `config_rev` 下，分析输出是确定性的（deterministic）
+- 下载文件名与 artifact metadata 绑定 `config_rev`
+- `POST /api/config` 与 `GET /api/config/:session_id` 提供 `config_hash` 与 `reproducibility_token`
+
+## 6. Tests
+
+后端测试：
+
+```bash
+cd backend
+npm test
+npm run test:summary
+```
+
+`npm run test:summary` 会执行：
+- 回归测试：`scripts/regression.js`
+- 性能测试：`scripts/performance.js`
+- 生成摘要：`docs/ROUND5_TEST_SUMMARY.md`
+
+前端构建验证：
+
+```bash
+cd frontend
+npm install
+npm run build
+```
+
+CI（GitHub Actions）：
+
+- Workflow: `.github/workflows/compose-smoke.yml`
+- 执行内容：
+  - `cd backend && npm test`
+  - `docker buildx` 构建 `r-engine`（`cache-from/cache-to: type=gha`）
+  - `SKIP_API=1 scripts/compose_smoke.sh`（配置 + 构建烟测）
+
+## 7. Phase 5 Acceptance Snapshot
+
+来自 `docs/ROUND5_TEST_SUMMARY.md`（2026-02-21 最新一次）：
+- Regression: **PASS**
+- Analysis API latency (local loopback): `p50=1.37ms`, `p95=2.26ms`, `max=3.42ms`
+- Download API latency (local loopback): `p50=0.23ms`, `p95=0.44ms`, `max=0.75ms`
+
+发布门禁执行结果见：`docs/ROUND5_RELEASE_CHECKLIST.md`
+
+## 8. Release Checklist
+
+### 8.1 可部署（Deployable）
+
+- [ ] `docker compose up -d --build` 成功，`frontend/api/postgres/redis/r-engine/minio` 全部健康
+- [ ] `GET /api/health` 返回 `ok=true`
+- [ ] 前端四个图均可渲染，交互控件可用
+- [ ] 四图均可下载 `PNG/SVG/CSV`
+- [ ] 下载文件名/响应元数据中可追溯 `config_rev`
+
+### 8.2 可复现（Reproducible）
+
+- [ ] 相同 `config_rev` 多次请求，核心数据一致
+- [ ] `npm test` 全通过
+- [ ] `npm run test:summary` 生成最新 `docs/ROUND5_TEST_SUMMARY.md`
+- [ ] `POST /api/config` + `GET /api/config/:session_id` 的 `config_hash/reproducibility_token` 一致
+
+### 8.3 可回滚（Rollback-ready）
+
+- [ ] 发布前打 Git tag（例如 `release/round5`）
+- [ ] 保留上一个稳定镜像 tag（`frontend`/`backend`）
+- [ ] 数据库变更可逆（当前 Round 5 无新增 destructive migration）
+- [ ] 回滚流程演练：
+  - [ ] 切回上一 tag
+  - [ ] `docker compose up -d --build`
+  - [ ] 验证 `/api/health` 与关键页面
+
+## 9. Monitoring & Version Control
+
+审查与版本控制脚本：
+
+- `scripts/review_gate.sh <round-name>`：执行本地审查门禁（文档同步、compose 配置、脚本语法）。
+- `scripts/vc_snapshot.sh "<commit-message>"`：创建快照提交并自动打 tag。
+- `scripts/vc_rollback.sh <commit-or-tag>`：创建安全 rollback 分支（不会直接改写 `main`）。
+
+示例：
+
+```bash
+cd /Users/zhui/Desktop/cs/cloud-fullstack-docker
+scripts/review_gate.sh round-2
+scripts/vc_snapshot.sh "feat: round-2 upload parser"
+scripts/vc_rollback.sh baseline-v1
+```
+
+详细说明见 `docs/VERSION_CONTROL.md`。
+
+## 10. References
 
 - FragPipe-Analyst: https://fragpipe-analyst.nesvilab.org/
-- FragPipe: https://www.nature.com/articles/s41587-023-01754-z
-- DIA-NN: https://www.nature.com/articles/s41592-019-0638-x
-- MaxQuant: https://www.mcponline.org/article/S1535-9476(20)31402-5/fulltext
-- limma: https://academic.oup.com/nar/article/43/7/e47/2414268
-- clusterProfiler: https://academic.oup.com/omicsonline/article/16/5/284/2605412

@@ -11,7 +11,9 @@
    - `git status -sb`
 2. 执行审查门禁
    - `scripts/review_gate.sh round-name`
-3. 创建快照提交与标签
+3. 运行集成烟测（容器启动后）
+   - `scripts/compose_smoke.sh`
+4. 创建快照提交与标签
    - `scripts/vc_snapshot.sh "feat: round-name update"`
 
 ## Safe Rollback Workflow

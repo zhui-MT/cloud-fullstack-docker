@@ -72,6 +72,310 @@
 2. 定义并固化三类输入（FragPipe/DIA-NN/MaxQuant）字段映射配置。
 3. 在 `r-engine` 增加 `/run` 原型接口并与 `api` 做联调。
 
+## Round 2
+
+### Goal
+实现上传与解析最小闭环：
+- `POST /api/session`
+- `POST /api/upload`
+- 支持 FragPipe / DIA-NN / MaxQuant 的 protein/peptide 文件识别与统一 schema 映射
+- 返回解析摘要（样本数、实体数、可用列、警告）
+
+### Implemented
+- 新增会话接口 `POST /api/session`：
+  - 创建 session 并返回 `sessionId/name/createdAt`。
+- 新增上传接口 `POST /api/upload`（`multipart/form-data`）：
+  - 参数：`sessionId`/`session_id` + `file`。
+  - 校验 session 存在性。
+  - 解析并识别来源工具/实体层级（protein/peptide）。
+  - 写入 `uploads` 元数据并返回摘要和预览。
+  - 完整标准化行优先落地到 blob 存储（本地文件实现），数据库仅保留回退字段与引用键。
+- 新增查询接口 `GET /api/upload/:id`：
+  - 返回上传详情（来源识别、解析摘要、source/sample columns、preview、mappedRowCount）。
+- 新增分页接口 `GET /api/upload/:id/mapped-rows`：
+  - 支持 `limit`/`offset` 分页读取完整标准化行。
+- 新增会话列表接口 `GET /api/session/:id/uploads`：
+  - 支持 `limit`/`offset` 分页查看同一 session 的上传历史与摘要。
+- 新增删除接口 `DELETE /api/upload/:id`：
+  - 删除上传记录并清理关联 blob。
+  - 若 blob 删除失败，返回 warning 并仍删除数据库记录。
+- 新增批量删除接口 `DELETE /api/session/:id/uploads`：
+  - 批量删除会话下全部上传记录并清理关联 blob。
+  - 若部分 blob 删除失败，返回 warning 并仍删除数据库记录。
+- 新增对象存储后端适配：
+  - `backend/src/uploadBlobStore.js` 增加 `S3UploadBlobStore`（兼容 MinIO/S3）。
+  - 通过环境变量选择 `UPLOAD_BLOB_BACKEND=fs|s3|minio`。
+  - `POST /api/upload` 返回 `storage.mode/key`，便于排障与追踪。
+  - `docker-compose.yml` 新增 `minio-init` 服务，自动创建 `UPLOAD_BLOB_BUCKET` 并设置 bucket policy。
+  - `api` 服务注入完整 `UPLOAD_BLOB_*` 环境变量，支持容器内直连 MinIO。
+  - 新增 `scripts/minio_init.sh`，支持 `UPLOAD_BLOB_POLICY=private|public-read`。
+- 新增解析模块 `backend/proteomicsParser.js`：
+  - 自动识别分隔符（tab/comma）。
+  - 自动识别来源：
+    - FragPipe（protein/peptide）
+    - DIA-NN（protein/peptide）
+    - MaxQuant（protein/peptide）
+  - 映射逻辑升级为表头大小写无关（case-insensitive），提升对不同导出样式的兼容性。
+  - 统一映射字段：`entityType/sourceTool/accession/sequence/modifiedSequence/gene/proteinGroup/quantities`。
+  - 生成摘要：
+    - `sampleCount`
+    - `entityCount`
+    - `availableColumns`
+    - `warnings`
+- 新增样例数据：
+  - `fragpipe_protein.tsv`
+  - `diann_peptide.tsv`
+  - `maxquant_protein.txt`
+- 新增测试：
+  - `test/upload.api.test.js`：跑通 `POST /api/session -> POST /api/upload`，覆盖 FragPipe / DIA-NN / MaxQuant 三类上传。
+  - `test/upload.api.test.js`：新增 `GET /api/upload/:id` 回读持久化结果验证。
+  - `test/upload.api.test.js`：新增 `GET /api/upload/:id/mapped-rows` 分页验证。
+  - `test/proteomicsParser.test.js`：覆盖 FragPipe / DIA-NN / MaxQuant 三类识别，并验证表头大小写变化时映射稳定。
+- 新增 blob 存储模块：`backend/src/uploadBlobStore.js`
+  - `FsUploadBlobStore`（默认）
+  - `InMemoryUploadBlobStore`（测试）
+  - `S3UploadBlobStore`（MinIO/S3）
+- 新增 `test/uploadBlobStore.test.js`
+  - 默认 `fs` 后端
+  - `s3` 配置实例化
+  - 缺失 bucket 的错误校验
+- 更新 `scripts/compose_smoke.sh`
+  - 新增会话/上传/上传详情/分页读取的冒烟检查。
+  - 新增上传 `storage.mode` 断言（默认期望 `blob`）。
+  - 新增 `GET /api/session/:id/uploads` 列表检查。
+  - 新增 `DELETE /api/upload/:id` 与删除后列表检查。
+  - 新增 `DELETE /api/session/:id/uploads` 批量删除检查。
+
+### API Example
+
+`POST /api/session`
+
+Request:
+```json
+{
+  "name": "round2-fragpipe-demo"
+}
+```
+
+Response (`201`):
+```json
+{
+  "sessionId": "2d5fe3bd-2e6f-4df1-a120-f8e8e7f7e9f2",
+  "name": "round2-fragpipe-demo",
+  "createdAt": "2026-02-21T14:15:16.123Z"
+}
+```
+
+`POST /api/upload` (`multipart/form-data`)
+- field `sessionId`: `2d5fe3bd-2e6f-4df1-a120-f8e8e7f7e9f2`
+- field `file`: `fragpipe_protein.tsv`
+
+Response (`201`):
+```json
+{
+  "uploadId": 1,
+  "sessionId": "2d5fe3bd-2e6f-4df1-a120-f8e8e7f7e9f2",
+  "fileName": "fragpipe_protein.tsv",
+  "detected": {
+    "sourceTool": "FragPipe",
+    "entityType": "protein",
+    "delimiter": "tab"
+  },
+  "summary": {
+    "rowCount": 3,
+    "sampleCount": 2,
+    "entityCount": 3,
+    "availableColumns": [
+      "entityType",
+      "sourceTool",
+      "accession",
+      "gene",
+      "quantities"
+    ],
+    "warnings": []
+  },
+  "preview": [
+    {
+      "entityType": "protein",
+      "sourceTool": "FragPipe",
+      "accession": "P12345",
+      "sequence": null,
+      "modifiedSequence": null,
+      "gene": "TP53",
+      "proteinGroup": null,
+      "quantities": {
+        "Intensity S1": 105000,
+        "Intensity S2": 99000
+      }
+    }
+  ]
+}
+```
+
+`GET /api/upload/:id`
+
+Response (`200`, 节选):
+```json
+{
+  "uploadId": 1,
+  "mappedRowCount": 2,
+  "summary": {
+    "sampleColumns": ["Sample_A", "Sample_B"],
+    "sourceColumns": ["Precursor.Id", "Stripped.Sequence", "Modified.Sequence", "Protein.Group"]
+  },
+  "preview": [
+    {
+      "entityType": "peptide",
+      "sourceTool": "DIA-NN",
+      "sequence": "AAAAK",
+      "accession": "P12345"
+    }
+  ]
+}
+```
+
+`DELETE /api/upload/:id`
+
+Response (`200`, 节选):
+```json
+{
+  "ok": true,
+  "uploadId": 1,
+  "blobDeleted": true,
+  "warnings": []
+}
+```
+
+`DELETE /api/session/:id/uploads`
+
+Response (`200`, 节选):
+```json
+{
+  "ok": true,
+  "sessionId": "2d5fe3bd-2e6f-4df1-a120-f8e8e7f7e9f2",
+  "deletedCount": 2,
+  "blobDeletedCount": 2,
+  "warnings": []
+}
+```
+
+### Changed Files
+- `cloud-fullstack-docker/backend/server.js`
+- `cloud-fullstack-docker/backend/src/uploadBlobStore.js`
+- `cloud-fullstack-docker/backend/proteomicsParser.js`
+- `cloud-fullstack-docker/backend/samples/fragpipe_protein.tsv`
+- `cloud-fullstack-docker/backend/samples/diann_peptide.tsv`
+- `cloud-fullstack-docker/backend/samples/maxquant_protein.txt`
+- `cloud-fullstack-docker/backend/test/upload.api.test.js`
+- `cloud-fullstack-docker/backend/test/proteomicsParser.test.js`
+- `cloud-fullstack-docker/backend/test/uploadBlobStore.test.js`
+- `cloud-fullstack-docker/.env.example`
+- `cloud-fullstack-docker/docker-compose.yml`
+- `cloud-fullstack-docker/scripts/minio_init.sh`
+- `cloud-fullstack-docker/scripts/compose_smoke.sh`
+- `cloud-fullstack-docker/README.md`
+- `cloud-fullstack-docker/db/init.sql`
+- `cloud-fullstack-docker/docs/DEVLOG.md`
+
+### Validation
+- 执行：`cd cloud-fullstack-docker/backend && npm test`
+- 结果：`33 passed, 0 failed`
+- 执行：`docker compose --env-file .env.example config`
+- 结果：通过（包含 `minio-init` + `api` 的 blob 存储环境注入）。
+  - 含端到端 API 验证：
+    - `POST /api/session + POST /api/upload parses FragPipe protein sample` 通过
+    - `POST /api/session + POST /api/upload parses DIA-NN peptide sample` 通过
+    - `POST /api/session + POST /api/upload parses MaxQuant protein sample` 通过
+    - `POST /api/upload accepts session_id field in multipart body` 通过
+    - `GET /api/upload/:id returns persisted normalized rows and summary` 通过
+    - `GET /api/upload/:id/mapped-rows supports pagination` 通过
+    - `POST /api/upload falls back to db mode when blob save fails` 通过
+    - `GET /api/upload/:id uses db fallback when blob read fails` 通过
+    - `GET /api/session/:id/uploads lists uploads with pagination` 通过
+    - `GET /api/session/:id/uploads returns 404 for unknown session` 通过
+    - `DELETE /api/upload/:id removes upload and updates session list` 通过
+    - `DELETE /api/upload/:id still deletes db row when blob delete fails` 通过
+    - `DELETE /api/session/:id/uploads removes all uploads in a session` 通过
+    - `DELETE /api/session/:id/uploads deletes db rows even when blob delete fails` 通过
+    - `createDefaultUploadBlobStore returns S3UploadBlobStore when configured` 通过
+  - 含三类解析识别验证：
+    - FragPipe protein 通过
+    - DIA-NN peptide 通过
+    - MaxQuant protein 通过
+
+### Risks / Open Questions
+- 当前来源识别基于表头启发式规则，若用户导出列名有大幅定制，可能需要扩展 alias 映射表。
+- 当前仓库已支持 MinIO/S3 后端，但本机 Docker daemon 不可用，尚未做容器内端到端实机联调。
+
+### Next Round Options
+1. 做 `docker compose up` 实机联调（验证 `minio-init` 创建 bucket + 上传落地到 MinIO）。
+2. 增加样本名标准化与样本注释映射（condition/replicate）。
+3. 为 FragPipe/DIA-NN/MaxQuant 补齐更多列别名与容错规则（大小写、空格、特殊分隔符）。
+
+## Round 3
+
+### Goal
+进入第 3 阶段，实现数据清洗与预处理配置系统：
+- filtering / imputation / normalization / batch correction 算法注册表与参数校验
+- `config_rev` + `config_hash` 持久化
+- 落地 `POST /api/config` 与 `GET /api/config/:session_id`
+- 增加非法参数拦截与同配置可复现测试（固定 seed）
+
+### Implemented
+- 新增配置算法注册表：`src/configRegistry.js`
+  - 覆盖四大阶段：`filtering` / `imputation` / `normalization` / `batch_correction`
+  - 每个算法定义参数默认值与类型/区间校验
+- 新增配置校验与标准化：`src/configValidation.js`
+  - 统一校验 config 结构
+  - 统一输出标准化 config（含固定 `seed`）
+- 新增配置哈希与复现 token：`src/configHash.js`
+  - 稳定序列化 + `sha256` 生成 `config_hash`
+  - 基于 `config_hash + seed` 生成 `reproducibility_token`
+- 新增配置仓储：`src/configRepository.js`
+  - PostgreSQL 实现：按 `session_id` 持久化 `config_rev` / `config_hash` / `config_json`
+  - 内存实现：用于无 DB 测试场景
+  - 同一 `session_id` 下相同 `config_hash` 复用旧 revision（不递增）
+- API 接口落地：`backend/server.js`
+  - `POST /api/config`：参数校验、计算 hash、持久化并返回 `config_rev/config_hash`
+    - 入参兼容 `session_id` 与 `sessionId`
+  - `GET /api/config/:session_id`：查询并返回会话最新配置
+- 数据库初始化扩展：`db/init.sql`
+  - 新增 `session_configs` 表及唯一约束：
+    - `UNIQUE(session_id, config_rev)`
+    - `UNIQUE(session_id, config_hash)`
+- 新增测试：`backend/test/config.api.test.js`
+  - 非法参数拦截测试（`KNN.k=0` 返回 400）
+  - 固定 seed 同配置可复现测试（同 hash、同 rev、同 token）
+
+### Changed Files
+- `cloud-fullstack-docker/backend/server.js`
+- `cloud-fullstack-docker/backend/src/configRegistry.js`
+- `cloud-fullstack-docker/backend/src/configValidation.js`
+- `cloud-fullstack-docker/backend/src/configHash.js`
+- `cloud-fullstack-docker/backend/src/configRepository.js`
+- `cloud-fullstack-docker/backend/test/config.api.test.js`
+- `cloud-fullstack-docker/backend/package.json`
+- `cloud-fullstack-docker/db/init.sql`
+- `cloud-fullstack-docker/docs/DEVLOG.md`
+
+### Validation
+执行命令：
+- `cd cloud-fullstack-docker/backend && npm test`
+
+结果：
+- `POST /api/config blocks illegal params` 通过
+- `same config with fixed seed is reproducible` 通过
+- 总计：`2 passed, 0 failed`
+
+### Risks / Open Questions
+- `POST /api/config` 已兼容 `session_id/sessionId`，但与会话生命周期（`POST /api/session`）仍是弱耦合；后续可补会话权限边界策略。
+- 当前 `session_configs` 仅保存“每个 session 的最新链式 revision”；后续若要支持回滚/比较，可补 `GET /api/config/:session_id/revisions`。
+
+### Next Round Options
+1. 补充配置 revision 历史查询与 diff API。
+2. 将配置直接接入 `de/enrichment` 任务执行参数，形成端到端“配置 -> 分析结果”追溯链。
+3. 为参数校验补更多边界测试（未知字段、空字符串、极值区间）。
+
 ## Review Monitor Setup
 
 ### Goal
@@ -88,6 +392,27 @@
 
 ### Notes
 - 当前目录不是 Git 仓库，后续审查建议优先提供 patch/diff 进行精确核查。
+
+## Governance Hardening
+
+### Goal
+把“监察 + 版本控制”从文档约定升级为可执行脚本机制。
+
+### Implemented
+- 新增 `scripts/review_gate.sh`（本地审查门禁）。
+- 新增 `scripts/vc_snapshot.sh`（快照提交 + 自动打 tag）。
+- 新增 `scripts/vc_rollback.sh`（安全回滚分支，不直接改写 main）。
+- 新增 `docs/VERSION_CONTROL.md`（版本控制操作手册）。
+- 更新 `README.md` 与 `docs/REVIEW_PROTOCOL.md` 的使用说明。
+
+### Changed Files
+- `cloud-fullstack-docker/scripts/review_gate.sh`
+- `cloud-fullstack-docker/scripts/vc_snapshot.sh`
+- `cloud-fullstack-docker/scripts/vc_rollback.sh`
+- `cloud-fullstack-docker/docs/VERSION_CONTROL.md`
+- `cloud-fullstack-docker/docs/REVIEW_PROTOCOL.md`
+- `cloud-fullstack-docker/README.md`
+- `cloud-fullstack-docker/docs/DEVLOG.md`
 
 ## Round 4
 
@@ -157,3 +482,1072 @@
 1. 在后端容器安装 R 与依赖包，切换默认执行到真实 limma + clusterProfiler。
 2. 接入 Redis/BullMQ + PostgreSQL job persistence，支持重启后任务可追踪。
 3. 补齐 DEqMS/MSstats/SAM/RankProd 的真实执行器与参数校验。
+
+## Round 5
+
+### Goal
+进入第 5 阶段：完成图形交互、下载和发布前验收。
+
+### Implemented
+- 后端新增分析 API：`GET /api/analysis`，返回 `PCA/Correlation/Volcano/Enrichment` 数据。
+- 后端新增 artifact 下载/追溯 API：
+  - `GET /api/artifacts/:id/download` (`CSV/SVG`)
+  - `GET /api/artifacts/:id/png` (PNG 渲染 payload)
+  - `GET /api/artifacts/:id/meta`
+- artifact 元数据统一包含：`artifact_id/kind/format/file_name/config_rev/generated_at`。
+- 前端重构为四图可视化面板，新增交互：
+  - PCA 组别筛选
+  - Volcano 阈值滑杆
+  - Enrichment TopN 切换
+- 前端实现 `PNG/SVG/CSV` 下载：
+  - `SVG/CSV` 直接下载
+  - `PNG` 由前端基于后端 SVG payload 转 Canvas 导出
+- 回归与性能测试：
+  - 新增 `backend/scripts/regression.js`
+  - 新增 `backend/scripts/performance.js`
+  - 新增 `backend/scripts/generate-test-summary.js`
+  - 新增 `npm run test:summary`
+- 修复配置校验兼容性：`backend/src/configValidation.js` 支持 registry 中 function/object 两类 validator。
+- 更新 README 为最终运行说明，并加入发布检查清单（可部署/可复现/可回滚）。
+
+### Changed Files
+- `cloud-fullstack-docker/backend/server.js`
+- `cloud-fullstack-docker/backend/lib/analysis.js`
+- `cloud-fullstack-docker/backend/src/configValidation.js`
+- `cloud-fullstack-docker/backend/scripts/regression.js`
+- `cloud-fullstack-docker/backend/scripts/performance.js`
+- `cloud-fullstack-docker/backend/scripts/generate-test-summary.js`
+- `cloud-fullstack-docker/backend/package.json`
+- `cloud-fullstack-docker/frontend/src/App.jsx`
+- `cloud-fullstack-docker/frontend/src/App.css`
+- `cloud-fullstack-docker/docs/ROUND5_TEST_SUMMARY.md`
+- `cloud-fullstack-docker/README.md`
+- `cloud-fullstack-docker/docs/DEVLOG.md`
+
+### Validation
+执行时间：2026-02-21
+
+- 后端单测：`cd backend && npm test` 通过（7/7）
+- 回归 + 性能：`cd backend && npm run test:summary` 通过
+- 前端构建：`cd frontend && npm install && npm run build` 通过
+
+性能摘要（本地 loopback，非容器压测）：
+- Analysis API: p50=1.37ms, p95=2.26ms, max=3.42ms
+- Download API: p50=0.23ms, p95=0.44ms, max=0.75ms
+
+### Risks / Open Questions
+- 当前 PNG 采用“后端返回 SVG payload + 前端转 Canvas”路径，后端未直接输出二进制 PNG。
+- 性能数据为本地进程级基准，生产环境需结合容器和网络路径复测。
+- artifact 仓库目前是进程内内存态，重启后不会保留历史下载 ID。
+
+### Next Round Options
+1. 接入持久化 artifact 存储（如 MinIO）并支持历史回放下载。
+2. 增加 E2E 浏览器自动化用例（渲染与下载链路）。
+3. 将性能测试扩展为容器内并发压测（含 p99 与错误率门限）。
+
+## Round 6
+
+### Goal
+将第 4 阶段 R 计算链路从本地 `Rscript` 扩展为优先远程 `r-engine` 调用，贴合当前 `api + r-engine` 架构并保留本地 fallback。
+
+### Implemented
+- `r-engine` 新增差异+富集执行接口：
+  - `POST /run/de-enrich`
+  - 入口参数：`{ mode, payload }`
+  - 计算：`limma` + `clusterProfiler` + `org.Hs.eg.db`
+- `r-engine` 新增分析实现文件：`r-engine/analysis.R`。
+- `r-engine` Dockerfile 增强：
+  - 安装编译/系统依赖
+  - 安装 `BiocManager`
+  - 安装 `limma`, `clusterProfiler`, `org.Hs.eg.db`
+- 后端 R 调度改造：`backend/src/rRunner.js`
+  - 优先走 `R_ENGINE_URL` 远程调用
+  - 远程失败自动回退本地 `Rscript`
+  - 保留最终 JS fallback（由模块层处理）
+- 日志语义统一：`Rscript` 字样升级为 `R runtime`。
+- E2E 脚本增强：`backend/scripts/e2e_round4.sh`
+  - 改为 JSON 解析方式提取字段（不依赖脆弱 sed）
+  - 输出 `runtime` 和 `significantGenes`
+  - 新增 `EXPECT_RUNTIME` 断言能力
+- 新增自动化测试：`backend/test/rRunner.test.js`（mock r-engine 验证远程路径）。
+
+### Changed Files
+- `cloud-fullstack-docker/r-engine/analysis.R`
+- `cloud-fullstack-docker/r-engine/app.R`
+- `cloud-fullstack-docker/r-engine/Dockerfile`
+- `cloud-fullstack-docker/backend/src/rRunner.js`
+- `cloud-fullstack-docker/backend/src/modules/deEnrich.js`
+- `cloud-fullstack-docker/backend/scripts/e2e_round4.sh`
+- `cloud-fullstack-docker/backend/test/rRunner.test.js`
+- `cloud-fullstack-docker/docs/DEVLOG.md`
+
+### Validation
+执行时间：2026-02-21
+
+1) 单测：
+- 命令：`cd backend && npm test`
+- 结果：`7 passed, 0 failed`（包含 `runRDeEnrich uses remote r-engine when R_ENGINE_URL is set`）
+
+2) 端到端（本机无 Rscript 场景）：
+- 命令：`cd cloud-fullstack-docker && backend/scripts/e2e_round4.sh`
+- 结果：`status=succeeded`，`runtime=JS_FALLBACK`（符合预期，因本机缺 `Rscript`）
+
+3) 端到端（mock r-engine 场景）：
+- 后端启动时设置：`R_ENGINE_URL=http://127.0.0.1:18080`
+- 命令：`EXPECT_RUNTIME=R backend/scripts/e2e_round4.sh`
+- 结果：`status=succeeded`，`runtime=R`，日志包含：
+  - `Trying remote r-engine: ...`
+  - `[r-engine] {...}`
+  - `Remote r-engine completed`
+
+### Risks / Open Questions
+- 当前环境 Docker daemon 未启动，无法在本轮内完成真实 `r-engine` 容器构建验证。
+- `clusterProfiler` 依赖链较重，容器首次构建耗时较长；建议在 CI 做缓存。
+- 目前主后端仍在 `backend` 目录，compose 使用的是 `api` 服务，后续需要做服务对齐（迁移或替换）。
+
+### Next Round Options
+1. 将 `backend` 能力并入 `api` 服务，消除双后端目录分叉。
+2. 在 CI 增加 `r-engine` build + smoke test（`/health` + `/run/de-enrich`）。
+3. 把 job queue 从内存态升级到 Redis/BullMQ 持久队列。
+
+## Round 7
+
+### Goal
+继续完善配置系统可追溯能力，补齐配置 revision 历史查询与版本差异接口。
+
+### Implemented
+- 扩展配置仓储接口与实现：
+  - `listRevisions(sessionId)`：列出会话所有 revision（升序）
+  - `getConfigByRevision(sessionId, configRev)`：按 revision 读取配置
+- 新增配置差异计算模块：
+  - `backend/src/configDiff.js`
+  - 支持对象/数组递归比对，输出字段路径级变更（`path/from/to`）
+- 新增 API：
+  - `GET /api/config/:session_id/revisions`
+  - `GET /api/config/:session_id/diff?from_rev=1&to_rev=2`
+- 新增参数校验：
+  - `from_rev/to_rev` 必须为正整数，否则返回 `400`
+  - 任一 revision 不存在返回 `404`
+- 扩展测试：
+  - 新增 revision 历史与 diff 接口测试，验证 revision 递增与关键字段变更（`normalization.algorithm`）
+
+### Changed Files
+- `cloud-fullstack-docker/backend/src/configRepository.js`
+- `cloud-fullstack-docker/backend/src/configDiff.js`
+- `cloud-fullstack-docker/backend/server.js`
+- `cloud-fullstack-docker/backend/test/config.api.test.js`
+- `cloud-fullstack-docker/docs/DEVLOG.md`
+
+### Validation
+执行命令：
+- `cd cloud-fullstack-docker/backend && npm test`
+
+结果：
+- `10 passed, 0 failed`
+- 包含新增子测试：`GET /api/config/:session_id/revisions and /diff return revision history and changes`
+
+### Risks / Open Questions
+- 目前 `revisions` 接口只返回元信息；如前端需要版本回看，可增加 `include_config=true` 可选参数。
+- diff 为结构化字段级差异，尚未提供“语义级”变更分类（如算法切换/参数调整分组）。
+
+### Next Round Options
+1. 增加 `GET /api/config/:session_id/revisions/:rev`，支持指定 revision 全量回看。
+2. 在 diff 返回中加入变更分类（`algorithm_changed`, `param_changed`）。
+3. 将配置 revision 绑定到 job 执行入参，确保分析任务可按 revision 重放。
+
+## Round 8
+
+### Goal
+将 `config_rev/config_hash` 绑定到 `/api/run/:module` 的 job 执行与查询结果，形成“配置版本 -> 任务执行”的追溯闭环，并补单测与 e2e 回归。
+
+### Implemented
+- `/api/run/:module` 增强为带配置上下文解析：
+  - 支持按 `session_id + config_rev` 绑定配置
+  - 支持按 `session_id + config_hash` 绑定配置
+  - 支持仅 `session_id` 自动绑定最新配置
+  - 支持 `config_rev + config_hash` 一致性校验（不一致返回 `409`）
+- `JobManager` 扩展：
+  - `createJob` 增加 `options`，保存 `configTrace` 与 `executionContext`
+  - job 日志新增配置绑定信息
+  - job 执行结果自动附加 `result.config_trace`
+- `/api/job/:id` 返回新增 `config_trace` 字段。
+- 配置仓储新增按 hash 查询能力：
+  - `getConfigByHash(sessionId, configHash)`（PG + InMemory 实现）
+
+### Changed Files
+- `cloud-fullstack-docker/backend/server.js`
+- `cloud-fullstack-docker/backend/src/jobManager.js`
+- `cloud-fullstack-docker/backend/src/configRepository.js`
+- `cloud-fullstack-docker/backend/test/run.config-trace.test.js`
+- `cloud-fullstack-docker/docs/DEVLOG.md`
+
+### Validation
+执行时间：2026-02-21
+
+1) 单测：
+- 命令：`cd cloud-fullstack-docker/backend && npm test`
+- 结果：`15 passed, 0 failed`
+- 新增覆盖：
+  - `POST /api/run/:module binds latest config trace from session`
+  - `POST /api/run/:module supports explicit config_rev/config_hash binding and rejects mismatch`
+
+2) E2E 回归（兼容性）：
+- 命令：`cd cloud-fullstack-docker/backend && ./scripts/e2e_round4.sh`
+- 结果：任务 `succeeded`，`runtime=JS_FALLBACK`，未带配置参数时行为保持兼容。
+
+### Risks / Open Questions
+- 默认 `node server.js` 在无 PostgreSQL 环境下，配置 API 仍依赖 `PgConfigRepository`，会导致本地“无 DB 直接绑配置跑 e2e”不可用。
+- 当前 job 仅回传 `config_trace` 元信息，尚未将配置参数用于模块内部行为切换（暂为追溯绑定阶段）。
+
+### Next Round Options
+1. 增加无 DB 开发模式（自动切换 `InMemoryConfigRepository`）。
+2. 将 `executionContext.config` 接入模块逻辑，实现“按配置版本重放”。
+3. 在 `scripts/e2e_round4.sh` 增加可选配置绑定参数（`SESSION_ID/CONFIG_REV/CONFIG_HASH`）。
+
+## Round 9
+
+### Goal
+让 `executionContext.config` 真正驱动 `de/enrichment` 计算逻辑，并验证不同 `config_rev` 可改变任务执行行为（不仅是元数据追溯）。
+
+### Implemented
+- 模块执行入口接入配置上下文：
+  - `runDeModule/runEnrichmentModule/runDeEnrichModule` 读取 `executionContext.config`
+  - 增加预处理流水线（最小实现）：
+    - filtering：支持低方差过滤
+    - imputation：`none` / 非 `none` 的缺失值填补（当前统一按最小值一半策略）
+    - normalization：`no-normalization` / `median` / `z-score`
+    - batch correction：基于样本批次字段做均值对齐（无批次时跳过并记日志）
+- `runJsDe` 增加数值矩阵校验：
+  - 若存在非数值（如 `null`）且未被填补，抛出 `INVALID_NUMERIC_MATRIX`
+- 新增行为测试 `run.config-preprocessing.test.js`：
+  - 同一 session 下 `config_rev=1`（`imputation=none`）任务失败
+  - `config_rev=2`（`imputation=min-half`）任务成功
+  - 证明配置版本已影响执行结果
+
+### Changed Files
+- `cloud-fullstack-docker/backend/src/modules/deEnrich.js`
+- `cloud-fullstack-docker/backend/test/run.config-preprocessing.test.js`
+- `cloud-fullstack-docker/docs/DEVLOG.md`
+
+### Validation
+执行命令：
+- `cd cloud-fullstack-docker/backend && npm test`
+
+结果：
+- `17 passed, 0 failed`
+- 新增通过用例：`executionContext.config affects preprocessing and job outcome by revision`
+
+### Risks / Open Questions
+- 当前 imputation 的多算法入口在 fallback 中仍使用统一简化策略，尚未做算法级差异化实现。
+- 预处理实现为“可验证链路”的最小版本，统计严谨性仍需与 R 正式流程对齐。
+
+### Next Round Options
+1. 将 `imputation` fallback 细分为算法级实现（`KNN/SVD/QRILC` 等）。
+2. 将配置预处理参数同步传入 R runtime，统一 JS/R 行为。
+3. 在 `/api/job/:id` 中增加“预处理摘要”（过滤数量、填补数量、归一化策略）。
+
+## Round 10
+
+### Goal
+细化 JS fallback 的 imputation 算法分支（`KNN/SVD/QRILC/minprob/left-shift-gaussian/...`），并将预处理配置参数结构化透传到 R runtime，补齐一致性验证。
+
+### Implemented
+- `backend/src/modules/deEnrich.js` 预处理链路增强：
+  - imputation 从统一策略升级为算法分支实现：
+    - `min-half`
+    - `left-shift-gaussian`（基于 seed 的确定性噪声）
+    - `minprob`
+    - `QRILC`（近似实现）
+    - `KNN`（基于行间距离）
+    - `SVD`（低秩近似填补）
+    - `BPCA`（迭代近似）
+    - `missForest`（中位数近似）
+    - `hybrid`（按缺失比例分配 MAR/MNAR 路径）
+  - 增加 `preprocessing` 运行摘要（filtering/imputation/normalization/batch_correction 统计）
+  - 增加 `preprocessing_config`（从 `executionContext.config` 透传的结构化配置）
+  - 非数值矩阵校验保留，保障 `imputation=none` 场景能明确失败
+- 新增测试：
+  - `run.config-preprocessing.test.js`
+    - 新增 `KNN vs SVD` 在同一缺失数据上的输出差异验证
+  - `run.r-preprocess-passthrough.test.js`
+    - 使用 mock `r-engine` 验证 `preprocessing_config` 与 `preprocessing` 已随请求透传到远端 R runtime
+
+### Changed Files
+- `cloud-fullstack-docker/backend/src/modules/deEnrich.js`
+- `cloud-fullstack-docker/backend/test/run.config-preprocessing.test.js`
+- `cloud-fullstack-docker/backend/test/run.r-preprocess-passthrough.test.js`
+- `cloud-fullstack-docker/docs/DEVLOG.md`
+
+### Validation
+执行命令：
+- `cd cloud-fullstack-docker/backend && npm test`
+
+结果：
+- `23 passed, 0 failed`
+- 新增通过用例：
+  - `different imputation algorithms (KNN vs SVD) lead to different DE outputs`
+  - `preprocessing config is passed through to remote r-engine payload`
+
+### Risks / Open Questions
+- 目前 `QRILC/BPCA/missForest` 为工程近似实现，统计学精度仍需与 R 正式实现逐项对齐。
+- JS 与 R 的预处理实现仍非完全同源，当前主要保证参数透传与行为可追溯。
+
+### Next Round Options
+1. 在 R pipeline 中消费 `preprocessing_config`，实现与 JS 同语义的预处理步骤。
+2. 为每种 imputation 增加固定 seed 的基准回归快照（防止行为漂移）。
+3. 在 `/api/job/:id` 增加可读化 preprocessing 报告字段供前端展示。
+
+## Round 11
+
+### Goal
+在 R pipeline 中实际消费 `preprocessing_config`，并补充 JS/R 入口一致性回归测试。
+
+### Implemented
+- 新增/重构 R 预处理执行链（`r-engine/analysis.R`）：
+  - 在进入 limma 前应用 `preprocessing_config`
+  - 支持 filtering + imputation + normalization + batch correction 的可运行近似实现
+  - 支持算法入口：
+    - imputation: `none|min-half|left-shift-gaussian|minprob|QRILC|KNN|SVD|BPCA|missForest|hybrid`
+  - 输出 `preprocessing` 摘要（含算法与 imputed_count 等）
+- 后端本地 Rscript 路径对齐：
+  - 新增 `backend/r/analysis.R`（与 r-engine 分析核心保持同构）
+  - `backend/r/de_enrich.R` 改为加载 `analysis.R` 后执行 `run_de_enrich_pipeline`
+- 新增回归测试：
+  - `left-shift-gaussian` 固定 seed 确定性回归（同 seed 稳定，不同 seed 变化）
+  - 远端 r-engine 透传验证增强（验证 `preprocessing` 摘要也透传）
+
+### Changed Files
+- `cloud-fullstack-docker/r-engine/analysis.R`
+- `cloud-fullstack-docker/backend/r/analysis.R`
+- `cloud-fullstack-docker/backend/r/de_enrich.R`
+- `cloud-fullstack-docker/backend/test/run.config-preprocessing.test.js`
+- `cloud-fullstack-docker/backend/test/run.r-preprocess-passthrough.test.js`
+- `cloud-fullstack-docker/docs/DEVLOG.md`
+
+### Validation
+执行命令：
+- `cd cloud-fullstack-docker/backend && npm test`
+
+结果：
+- `26 passed, 0 failed`
+- 新增通过用例：
+  - `left-shift-gaussian imputation is deterministic for same seed and changes with different seed`
+  - `preprocessing config is passed through to remote r-engine payload`（增强断言）
+
+### Risks / Open Questions
+- 当前 R 预处理仍是与 JS 对齐的“工程近似版”，与 Bioconductor 标准实现尚需逐项比对。
+- `backend/r/analysis.R` 与 `r-engine/analysis.R` 当前为同步副本，后续建议抽出共享源避免漂移。
+
+### Next Round Options
+1. 抽取单一 R 预处理核心文件，消除 backend/r 与 r-engine 双份代码。
+2. 对齐 R 端真实算法实现（例如 QRILC/BPCA/missForest）并增加统计回归基准。
+3. 增加 job 返回中的 preprocessing 可视化摘要（供前端配置审计面板使用）。
+
+## Round 13
+
+### Goal
+优化 `r-engine` 根上下文构建与防漂移保障，补齐可用于 CI 的 compose 冒烟检查路径。
+
+### Implemented
+- 新增仓库根级 `.dockerignore`：
+  - 默认忽略全部上下文，仅放行 `r-engine` 运行文件与单一分析源 `backend/r/analysis.R`。
+  - 显著缩小 `r-engine` 构建上下文体积。
+- 增强防漂移测试：
+  - `backend/test/r.analysis.source.test.js` 追加断言：
+    - 根 `.dockerignore` 存在并包含关键放行规则
+    - 单一分析源策略未被回退
+- 补充 compose 冒烟脚本验证：
+  - `scripts/compose_smoke.sh` 支持配置解析 + `r-engine` 构建检查
+  - 本地可通过 `SKIP_API=1` 做轻量 CI 风格验证
+
+### Changed Files
+- `cloud-fullstack-docker/.dockerignore`
+- `cloud-fullstack-docker/backend/test/r.analysis.source.test.js`
+- `cloud-fullstack-docker/docs/DEVLOG.md`
+
+### Validation
+执行时间：2026-02-21
+
+1) 后端单测
+- 命令：`cd backend && npm test`
+- 结果：`29 passed, 0 failed`
+
+2) Compose 轻量冒烟
+- 命令：`SKIP_API=1 scripts/compose_smoke.sh`
+- 结果：
+  - compose config 通过
+  - `r-engine` 构建通过
+  - 冒烟脚本通过
+
+3) 上下文体积观察
+- `docker compose build r-engine` 输出显示构建上下文传输约 `20KB`（相比全仓库显著缩小）。
+
+### Risks / Open Questions
+- 当前 `.dockerignore` 采用“全忽略 + 白名单放行”策略；若后续 `r-engine` 依赖新增文件，需同步维护白名单。
+
+### Next Round Options
+1. 在 CI 中固定执行 `SKIP_API=1 scripts/compose_smoke.sh` 作为构建门禁。
+2. 为 R 预处理输出新增 golden snapshot，对关键算法做回归比对。
+3. 将 `preprocessing` 摘要透传到前端分析页面用于审计展示。
+
+## Round 5 Acceptance Refresh
+
+### Goal
+在 Round 5 基础上执行一次可发布门禁复核，给出可部署/可复现/可回滚状态。
+
+### Implemented
+- 复跑后端全测试：`npm test`（7/7 通过）。
+- 复跑回归 + 性能：`npm run test:summary`，刷新 `docs/ROUND5_TEST_SUMMARY.md`。
+- 复跑前端构建：`npm run build` 通过。
+- 生成发布门禁执行报告：`docs/ROUND5_RELEASE_CHECKLIST.md`。
+- 更新 README 与 Round 5 性能数字为最新实测值。
+
+### Validation
+- `cd backend && npm test` -> `7 passed, 0 failed`
+- `cd backend && npm run test:summary` -> regression `PASS`
+- `cd frontend && npm run build` -> `built`
+- `docker compose up -d --build` -> blocked（Docker daemon 未启动）
+
+### Gate Status
+- Deployable: **BLOCKED**（环境阻塞）
+- Reproducible: **PASS**
+- Rollback-ready: **PARTIAL**（待执行 release tag + Docker 回滚演练）
+
+## Governance Remediation (Review 3 Fixes)
+
+### Goal
+修复 Review 3 的发布阻断：统一 compose 后端入口并消除 README/compose 冲突。
+
+### Implemented
+- 将 `docker-compose.yml` 的 `api` 服务构建入口从 `./api` 切换为 `./backend`。
+- 调整 `api` 容器变量为 `PORT=4000`，并将代码挂载目录改为 `./backend:/app`。
+- 新增 `scripts/compose_smoke.sh`，用于集成验证：`/api/health`、`/api/analysis`、artifact 下载与 metadata 头。
+- 更新 `README.md` 运行栈说明，明确六服务已启用，并加入 smoke 命令。
+- 更新 `docs/REVIEW_PROTOCOL.md` 与 `docs/VERSION_CONTROL.md`，纳入 compose smoke 检查。
+
+### Changed Files
+- `cloud-fullstack-docker/docker-compose.yml`
+- `cloud-fullstack-docker/scripts/compose_smoke.sh`
+- `cloud-fullstack-docker/README.md`
+- `cloud-fullstack-docker/docs/REVIEW_PROTOCOL.md`
+- `cloud-fullstack-docker/docs/VERSION_CONTROL.md`
+- `cloud-fullstack-docker/docs/DEVLOG.md`
+
+## Round 7
+
+### Goal
+将第 4 阶段能力同步到 compose 主后端 `api` 服务，避免仅在 `backend` 目录可用。
+
+### Implemented
+- 在 `api` 服务落地作业链路：
+  - `GET /api/modules`
+  - `POST /api/run/:module`
+  - `GET /api/job/:id`
+- 新增 `api` 内部作业系统（内存队列 + job 状态 + 日志）：
+  - `api/src/jobManager.js`
+- 新增 `api` 分析模块：
+  - `api/src/modules/deEnrich.js`
+  - 支持 DE 引擎入口：`limma/DEqMS/MSstats/SAM/RankProd`
+  - 当前仅 limma 实现，其他引擎返回 `ENGINE_NOT_IMPLEMENTED`
+- 新增 `api` 数据与 R 调度模块：
+  - `api/src/demoDataset.js`
+  - `api/src/rRunner.js`（优先远程 `R_ENGINE_URL`，失败回退 JS）
+- 重构 `api/server.js`：
+  - 提供 `createApp/startServer` 便于测试
+  - 保留原有 `/api/health` 与 `/api/messages`
+- 新增 `api` 测试与 e2e 脚本：
+  - `api/test/deEnrich.api.test.js`
+  - `api/scripts/e2e_round4.sh`
+- `api/package.json` 新增 `npm test`。
+
+### Changed Files
+- `cloud-fullstack-docker/api/server.js`
+- `cloud-fullstack-docker/api/package.json`
+- `cloud-fullstack-docker/api/src/jobManager.js`
+- `cloud-fullstack-docker/api/src/demoDataset.js`
+- `cloud-fullstack-docker/api/src/rRunner.js`
+- `cloud-fullstack-docker/api/src/modules/deEnrich.js`
+- `cloud-fullstack-docker/api/test/deEnrich.api.test.js`
+- `cloud-fullstack-docker/api/scripts/e2e_round4.sh`
+- `cloud-fullstack-docker/docs/DEVLOG.md`
+
+### Validation
+执行时间：2026-02-21
+
+1) `api` 单测
+- 命令：`cd api && npm test`
+- 结果：`2 passed, 0 failed`
+  - `POST /api/run/de-enrich and GET /api/job/:id works in api service`
+  - `DEqMS is exposed but not implemented in api service`
+
+2) `api` 端到端（无 R_ENGINE_URL）
+- 命令：`cd cloud-fullstack-docker && api/scripts/e2e_round4.sh`
+- 结果：`status=succeeded`, `runtime=JS_FALLBACK`, `significantGenes=14`
+
+3) `api` 端到端（远程 R 通道，mock r-engine）
+- 启动：`R_ENGINE_URL=http://127.0.0.1:18080 npm run start`
+- 命令：`EXPECT_RUNTIME=R api/scripts/e2e_round4.sh`
+- 结果：`status=succeeded`, `runtime=R`, `significantGenes=2`
+- 日志关键行：
+  - `Trying remote r-engine: ...`
+  - `[r-engine] {...}`
+  - `Remote r-engine completed`
+
+### Risks / Open Questions
+- `api` 与 `backend` 当前存在能力重叠，后续需要决定保留单一后端目录以降低维护成本。
+- 真实 `r-engine` 容器路径待在 Docker daemon 可用后做完整构建与真包验证（当前 mock 验证已通过）。
+
+### Next Round Options
+1. 统一后端目录（`api` vs `backend`），避免双实现漂移。
+2. 将 `api` 作业队列从内存态升级为 Redis/BullMQ。
+3. 在 compose 下跑真实 `r-engine` build + `/run/de-enrich` smoke test。
+
+## Remediation Validation
+
+### Goal
+验证 Review 3 修复项并补齐可执行的集成烟测流程。
+
+### Validation
+- `docker compose --env-file .env.example config`：通过（`api.build.context` 已指向 `./backend`）。
+- `scripts/review_gate.sh review3-remediation-v2`：通过。
+- `SKIP_HEALTH=1 scripts/compose_smoke.sh`（本机 backend 裸跑场景）：通过。
+
+### Notes
+- `scripts/compose_smoke.sh` 默认会检查 `/api/health`，用于 compose 全栈场景。
+- 本机未起 postgres 时可使用 `SKIP_HEALTH=1` 跳过 health 检查，仅验证 analysis/artifact 下载链路。
+
+## Round 8
+
+### Goal
+继续推进任务编排：在 `api` 服务引入可切换队列模式（`memory` / `bullmq`），为后续 Redis 持久队列迁移做准备。
+
+### Implemented
+- 重构 `api` 作业管理器为双实现：
+  - `InMemoryJobManager`（本地开发/测试默认）
+  - `BullmqJobManager`（Redis 队列模式）
+- 新增队列工厂：`createJobManager({ queueMode })`。
+- `api/server.js` 接入队列模式配置：
+  - `JOB_QUEUE_MODE`（默认 `memory`）
+  - Redis 连接参数来自 `REDIS_HOST/REDIS_PORT`
+  - `/api/run/:module`、`/api/job/:id` 改为异步 job manager 调用
+- `BullmqJobManager` 行为：
+  - 将模块任务投递到队列并由 worker 执行
+  - `GET /api/job/:id` 可返回状态、结果、错误与日志
+  - 状态映射：`waiting/delayed/paused -> queued`, `active -> running`, `completed -> succeeded`, `failed -> failed`
+- Compose 与环境模板补齐：
+  - `docker-compose.yml` 的 `api` 服务新增 `JOB_QUEUE_MODE: ${JOB_QUEUE_MODE:-bullmq}`
+  - `.env.example` 新增 `JOB_QUEUE_MODE=bullmq`
+- `api` 测试保持稳定：
+  - 测试场景固定 `queueMode: memory`，避免依赖外部 Redis。
+
+### Changed Files
+- `cloud-fullstack-docker/api/src/jobManager.js`
+- `cloud-fullstack-docker/api/server.js`
+- `cloud-fullstack-docker/api/package.json`
+- `cloud-fullstack-docker/api/package-lock.json`
+- `cloud-fullstack-docker/api/test/deEnrich.api.test.js`
+- `cloud-fullstack-docker/docker-compose.yml`
+- `cloud-fullstack-docker/.env.example`
+- `cloud-fullstack-docker/docs/DEVLOG.md`
+
+### Validation
+执行时间：2026-02-21
+
+1) 语法检查
+- `node --check api/server.js`
+- `node --check api/src/jobManager.js`
+- 结果：通过
+
+2) `api` 单测
+- 命令：`cd api && npm test`
+- 结果：`2 passed, 0 failed`
+
+3) `api` 端到端（memory 模式）
+- 启动：`cd api && JOB_QUEUE_MODE=memory npm run start`
+- 验证：`cd .. && api/scripts/e2e_round4.sh`
+- 结果：`status=succeeded`, `runtime=JS_FALLBACK`, `significantGenes=14`
+
+### Risks / Open Questions
+- 当前环境无可用 Redis 实例，未完成 `bullmq` 真连接路径的在线验证。
+- `api` 与 `backend` 仍存在部分功能重叠，后续需确定单一后端主路径。
+
+### Next Round Options
+1. 启动 Redis（或在 CI）后补 `bullmq` 真实 E2E 验证（包括失败重试与日志查询）。
+2. 把 `api` job 元数据落到 PostgreSQL，支持重启后 job 历史查询。
+3. 收敛 `backend` 与 `api` 的重复实现，保留一个主服务目录。
+
+### Round 8 Patch
+
+#### Extra Implemented
+- 新增 `ResilientJobManager`：
+  - `JOB_QUEUE_MODE=bullmq` 但 Redis 不可用时，自动降级到 `memory` 队列继续接单。
+  - `GET /api/modules` 新增 `queue` 状态字段，可观察是否进入 `memory-fallback`。
+- `api/server.js` 支持注入 `redisOptions`（用于测试与可控退避参数）。
+- BullMQ 连接参数补充 `connectTimeout` 与有限重试，减少不可用时阻塞。
+
+#### Extra Validation
+- `api` 单测更新为 `3 passed, 0 failed`，新增用例：
+  - `bullmq mode falls back to memory when redis is unavailable`
+- 验证点：
+  - 初始 `GET /api/modules` 返回 `queue.mode=bullmq`
+  - 触发任务后 Redis 连接失败自动降级
+  - 再次 `GET /api/modules` 返回 `queue.mode=memory-fallback` 且 `fallbackActive=true`
+
+## Round 9
+
+### Goal
+继续推进可追踪性：落地 job 持久化存储与历史查询接口，支撑重启后任务记录查询能力。
+
+### Implemented
+- 新增 job store 抽象：`api/src/jobStore.js`
+  - `InMemoryJobStore`
+  - `PgJobStore`
+- `api/server.js` 接入 `JOB_STORE_MODE`：
+  - `memory`（默认）
+  - `postgres`
+- `api/src/jobManager.js` 全链路接入 store 持久化：
+  - `queued/running/succeeded/failed` 状态更新同步写入 store
+  - bullmq worker 执行结果同步写入 store
+- `GET /api/job/:id` 增加 store 回查：
+  - queue 查不到时可从 store 读取
+- 新增 `GET /api/jobs`：
+  - 支持 `limit`（1-200）
+  - 支持 `status`、`module` 过滤
+  - 返回 `items/total/limit`
+- 数据库 schema 增强：
+  - `db/init.sql` 新增 `job_runs` 表
+- `api/scripts/e2e_round4.sh` 增强：
+  - 任务完成后额外输出 `jobs_total`
+- BullMQ 弹性继续增强：
+  - Redis 不可用时 `ResilientJobManager` 自动降级到 memory
+  - `GET /api/modules` 返回 `queue.mode=memory-fallback` 状态
+
+### Changed Files
+- `cloud-fullstack-docker/api/src/jobStore.js`
+- `cloud-fullstack-docker/api/src/jobManager.js`
+- `cloud-fullstack-docker/api/server.js`
+- `cloud-fullstack-docker/api/test/deEnrich.api.test.js`
+- `cloud-fullstack-docker/api/scripts/e2e_round4.sh`
+- `cloud-fullstack-docker/db/init.sql`
+- `cloud-fullstack-docker/.env.example`
+- `cloud-fullstack-docker/docker-compose.yml`
+- `cloud-fullstack-docker/docs/DEVLOG.md`
+
+### Validation
+执行时间：2026-02-21
+
+1) 单测
+- 命令：`cd api && npm test`
+- 结果：`3 passed, 0 failed`
+- 包含：`bullmq mode falls back to memory when redis is unavailable`
+
+2) 端到端（memory queue + memory store）
+- 启动：`cd api && JOB_QUEUE_MODE=memory JOB_STORE_MODE=memory npm run start`
+- 验证：`cd .. && api/scripts/e2e_round4.sh`
+- 结果：
+  - `status=succeeded`
+  - `runtime=JS_FALLBACK`
+  - `significantGenes=14`
+  - `jobs_total=1`
+
+### Risks / Open Questions
+- `JOB_STORE_MODE=postgres` 的在线验证仍依赖可用 PostgreSQL/compose 环境（当前未执行 docker 全栈联调）。
+- job 重启恢复目前提供“历史可查”，尚未实现“中断任务重试恢复”。
+
+### Next Round Options
+1. 在 compose 全栈下验证 `JOB_QUEUE_MODE=bullmq + JOB_STORE_MODE=postgres` 真实路径。
+2. 为 `GET /api/jobs` 增加分页游标（`cursor`）与时间范围过滤。
+3. 增加 job 重试策略与失败重跑接口（如 `POST /api/job/:id/retry`）。
+
+## Round 12
+
+### Goal
+消除 `backend/r` 与 `r-engine` 的 R 分析代码漂移风险，收敛为单一分析源文件。
+
+### Implemented
+- 选定 `backend/r/analysis.R` 作为唯一分析源。
+- 删除重复副本：`r-engine/analysis.R`。
+- 调整 `r-engine` 构建路径：
+  - `docker-compose.yml` 中 `r-engine` 构建上下文改为仓库根目录。
+  - `r-engine/Dockerfile` 改为从单一源复制：
+    - `COPY backend/r/analysis.R /app/analysis.R`
+- 新增防漂移测试：
+  - 校验 `r-engine/Dockerfile` 必须从 `backend/r/analysis.R` 复制分析核心。
+  - 校验 `r-engine/analysis.R` 不再存在。
+  - 校验 compose 中 `r-engine` 构建上下文为根目录并使用 `r-engine/Dockerfile`。
+
+### Changed Files
+- `cloud-fullstack-docker/docker-compose.yml`
+- `cloud-fullstack-docker/r-engine/Dockerfile`
+- `cloud-fullstack-docker/r-engine/analysis.R` (deleted)
+- `cloud-fullstack-docker/backend/test/r.analysis.source.test.js`
+- `cloud-fullstack-docker/docs/DEVLOG.md`
+
+### Validation
+执行时间：2026-02-21
+
+1) 后端单测
+- 命令：`cd backend && npm test`
+- 结果：`29 passed, 0 failed`
+- 新增通过用例：
+  - `r-engine docker build uses backend/r/analysis.R as single analysis source`
+
+2) Compose 配置检查
+- 命令：`docker compose config`
+- 结果：通过；`r-engine.build.context` 为仓库根目录，`dockerfile` 为 `r-engine/Dockerfile`。
+
+### Risks / Open Questions
+- `r-engine` 构建上下文改为仓库根目录后，镜像构建上下文体积上升，可能影响首次构建耗时。
+- 若后续继续扩展共享资产，建议补 `.dockerignore`（根目录级）以控制传输体积。
+
+### Next Round Options
+1. 增加根目录 `.dockerignore`，减少 `r-engine` 根上下文构建开销。
+2. 在 CI 增加“单一源校验 + compose build smoke test”。
+3. 将 `api` 服务也接入同一 R 分析源路径策略，统一后端族行为。
+
+## Round 10
+
+### Goal
+继续推进任务编排可运维性：增加失败任务重试接口与 job 历史分页能力。
+
+### Implemented
+- 新增失败任务重试接口：
+  - `POST /api/job/:id/retry`
+  - 仅允许 `failed` 状态任务重试（否则返回 `409`）
+  - 支持覆盖请求体：`{ request: {...} }`
+  - 返回：`sourceJobId/retryJobId/statusUrl`
+- 强化 job 历史查询：
+  - `GET /api/jobs` 新增 `cursor` 分页
+  - 返回新增 `nextCursor`（base64url 编码）
+  - 支持参数：`limit/status/module/cursor`
+- `jobStore` 升级：
+  - `InMemoryJobStore` 和 `PgJobStore` 的 `listJobs` 统一返回 `{ items, nextCursor }`
+  - PostgreSQL 查询排序增强：`ORDER BY created_at DESC, id DESC`
+  - 支持基于 `(created_at, id)` 的游标翻页
+- `server` 增强：
+  - `GET /api/job/:id` 统一使用 `loadJob`（queue + store 回查）
+  - `GET /api/modules` 保持 queue/store 模式可观测
+- `api` 测试增强：
+  - 新增 retry 成功重跑用例
+  - 新增 cursor 翻页用例
+
+### Changed Files
+- `cloud-fullstack-docker/api/server.js`
+- `cloud-fullstack-docker/api/src/jobStore.js`
+- `cloud-fullstack-docker/api/src/jobManager.js`
+- `cloud-fullstack-docker/api/test/deEnrich.api.test.js`
+- `cloud-fullstack-docker/api/scripts/e2e_round4.sh`
+- `cloud-fullstack-docker/docs/DEVLOG.md`
+
+### Validation
+执行时间：2026-02-21
+
+1) `api` 单测
+- 命令：`cd api && npm test`
+- 结果：`5 passed, 0 failed`
+- 新增通过用例：
+  - `POST /api/job/:id/retry retries failed jobs with override request`
+  - `GET /api/jobs supports cursor paging`
+
+2) 运行态验证（memory queue + memory store）
+- 启动：`JOB_QUEUE_MODE=memory JOB_STORE_MODE=memory npm run start`
+- `api/scripts/e2e_round4.sh`：
+  - `status=succeeded`
+  - `runtime=JS_FALLBACK`
+  - `jobs_total=1`
+- 手工验证：
+  - `engine=DEqMS` 任务失败
+  - `POST /api/job/:id/retry` 覆盖 `engine=limma` 后重试成功
+  - `/api/jobs` 返回 `nextCursor`，下一页请求可继续获取历史项
+
+### Risks / Open Questions
+- `POST /api/job/:id/retry` 当前仅支持单次立即重投，尚未加入重试次数上限与审计字段（如 `retry_of` 持久化）。
+- `JOB_STORE_MODE=postgres` 的在线联调仍需在可用 Postgres/compose 环境下执行。
+
+### Next Round Options
+1. 在 `job_runs` 表增加 `retry_of/retry_count` 字段，并把重试关系持久化。
+2. 增加 `POST /api/job/:id/cancel`（队列中任务取消）与状态流约束。
+3. 在 compose 全栈中验证 `bullmq + postgres store + r-engine` 真实链路。
+
+## Round 11
+
+### Goal
+继续增强任务可追溯与恢复能力：为 retry 建立可持久化关系字段，并完善分页/重试接口行为。
+
+### Implemented
+- Job 元数据新增重试关系字段：
+  - `retryOf`（来源任务 ID）
+  - `retryCount`（重试层级，从 0 开始）
+- `api/src/jobManager.js`：
+  - `createJob(module, request, meta)` 支持传入重试元数据
+  - memory/bullmq/resilient 三类 manager 全部透传并持久化 `retryOf/retryCount`
+- `api/server.js`：
+  - `POST /api/run/:module` 返回 `retryOf/retryCount`
+  - `GET /api/job/:id` 返回 `retryOf/retryCount`
+  - `POST /api/job/:id/retry` 自动设置：
+    - `retryOf = sourceJob.id`
+    - `retryCount = sourceJob.retryCount + 1`
+- `api/src/jobStore.js`：
+  - memory/pg store 模型新增 `retryOf/retryCount`
+  - pg schema 自动迁移：`ALTER TABLE ... ADD COLUMN IF NOT EXISTS`
+- `db/init.sql`：
+  - `job_runs` 表定义增加 `retry_of/retry_count`
+  - 增量兼容迁移 SQL 同步加入
+- 测试增强：
+  - 新增 `retry` 非失败任务返回 `409` 用例
+  - 更新 retry 成功用例断言 `retryOf/retryCount`
+
+### Changed Files
+- `cloud-fullstack-docker/api/src/jobManager.js`
+- `cloud-fullstack-docker/api/src/jobStore.js`
+- `cloud-fullstack-docker/api/server.js`
+- `cloud-fullstack-docker/api/test/deEnrich.api.test.js`
+- `cloud-fullstack-docker/db/init.sql`
+- `cloud-fullstack-docker/docs/DEVLOG.md`
+
+### Validation
+执行时间：2026-02-21
+
+1) `api` 单测
+- 命令：`cd api && npm test`
+- 结果：`6 passed, 0 failed`
+- 新增通过：`POST /api/job/:id/retry returns 409 for non-failed jobs`
+
+2) 运行态验证（memory queue + memory store）
+- 启动：`JOB_QUEUE_MODE=memory JOB_STORE_MODE=memory npm run start`
+- 验证：
+  - `POST /api/run/de-enrich {engine:DEqMS}` -> `failed`, `retryCount=0`
+  - `POST /api/job/:id/retry {request:{engine:limma}}` -> `202`, 返回 `retryOf=sourceId`, `retryCount=1`
+  - `GET /api/job/:retryId` -> `succeeded`, 且 `retryOf/retryCount` 字段正确
+
+### Risks / Open Questions
+- 当前 `retryCount` 仅按链路递增，尚未设置系统级重试上限策略。
+- `JOB_STORE_MODE=postgres` 在线验证仍依赖可用 Postgres/compose 环境。
+
+### Next Round Options
+1. 增加重试次数上限与策略（按模块/按错误类型）。
+2. 增加 `POST /api/job/:id/cancel` 与状态约束（queued/running）。
+3. 在 PostgreSQL store 模式下补 E2E 验证与索引优化（`status`, `created_at`）。
+
+## Round 12
+
+### Goal
+继续完善任务控制面：新增取消接口（`cancel`）并与重试审计字段协同，形成可观测的任务生命周期管理。
+
+### Implemented
+- 新增任务取消接口：
+  - `POST /api/job/:id/cancel`
+- 取消语义（当前实现）：
+  - `queued`：立即取消，状态变为 `canceled`
+  - `running`（in-memory）：记录 `cancelRequested`，任务结束后落 `canceled`
+  - `running`（bullmq）：返回 `409`（当前不支持强制中断 active worker）
+  - 终态（`succeeded/failed/canceled`）：返回 `409`
+  - 不存在任务：返回 `404`
+- `jobManager` 三实现统一补齐 `cancelJob`：
+  - `InMemoryJobManager`
+  - `BullmqJobManager`
+  - `ResilientJobManager`
+- 新增终态判定扩展：`canceled` 作为 terminal status。
+- 与 Round 11 重试字段联动：
+  - `retryOf/retryCount` 在 run/retry/job 查询响应中持续保留
+  - `jobStore` memory/postgres 继续持久化这些字段
+
+### Changed Files
+- `cloud-fullstack-docker/api/server.js`
+- `cloud-fullstack-docker/api/src/jobManager.js`
+- `cloud-fullstack-docker/api/src/jobStore.js`
+- `cloud-fullstack-docker/api/test/deEnrich.api.test.js`
+- `cloud-fullstack-docker/db/init.sql`
+- `cloud-fullstack-docker/docs/DEVLOG.md`
+
+### Validation
+执行时间：2026-02-21
+
+1) 单测
+- 命令：`cd api && npm test`
+- 结果：`8 passed, 0 failed`
+- 新增通过用例：
+  - `POST /api/job/:id/cancel cancels running in-memory jobs`
+  - `POST /api/job/:id/cancel returns conflict for completed jobs and 404 for unknown`
+
+2) 运行态验证（独立端口）
+- 启动：`API_PORT=4101 JOB_QUEUE_MODE=memory JOB_STORE_MODE=memory npm run start`
+- 实测：
+  - `POST /api/run/de-enrich {engine:DEqMS}` -> `failed`, `retryCount=0`
+  - `POST /api/job/:id/retry {request:{engine:limma}}` -> 返回 `retryOf/sourceId`, `retryCount=1`
+  - `GET /api/job/:retryId` -> `succeeded` 且 `retryOf/retryCount` 正确
+  - `POST /api/job/:retryId/cancel` -> `409 JOB_NOT_CANCELABLE`（终态不可取消）
+
+### Risks / Open Questions
+- BullMQ active job 的“强制取消”尚未实现（当前安全策略为返回 `409`）。
+- `cancelRequested` 对于长任务依赖 runner 在结束点落地，暂不支持中断 CPU 密集型执行。
+
+### Next Round Options
+1. 设计 cooperative cancel token，让长任务在步骤间可提前退出。
+2. 为 bullmq 增加 queued job cancel 的 E2E（Redis 在线场景）。
+3. 在 `job_runs` 增加索引与审计字段（`canceled_at`, `canceled_by`, `retry_of` 索引）。
+
+## Round 13
+
+### Goal
+继续完善任务运维能力：增加取消审计字段（`canceledAt/canceledBy`）并把取消行为扩展到三类 job manager。
+
+### Implemented
+- `api/src/jobManager.js`
+  - `cancelJob(id, { canceledBy })` 支持取消人字段
+  - memory manager：
+    - queued 立即 `canceled`
+    - running 标记 `cancelRequested`，执行完成后落 `canceled`
+  - bullmq manager：
+    - queued 支持取消并落 `canceled`
+    - active 任务返回 `409`（当前不支持强制中断）
+  - resilient manager：统一代理 cancel 到 primary/fallback
+- `api/server.js`
+  - 新增 `POST /api/job/:id/cancel`（已接入 `canceledBy`）
+  - run/job 响应中新增 `canceledAt/canceledBy`
+  - `createApp` 支持注入 `moduleRunners`（测试可替换）
+- `api/src/jobStore.js`
+  - memory/postgres store 新增字段：`canceledAt/canceledBy`
+  - postgres schema 自动迁移新增列
+  - 新增索引：
+    - `idx_job_runs_status_created_at`
+    - `idx_job_runs_retry_of`
+- `db/init.sql`
+  - `job_runs` 表定义与增量迁移补齐 `canceled_at/canceled_by` 及索引
+- 测试增强：
+  - running cancel 测试校验 `canceledBy/canceledAt`
+  - queued cancel 测试
+  - completed/unknown cancel 冲突与 404 测试
+
+### Changed Files
+- `cloud-fullstack-docker/api/src/jobManager.js`
+- `cloud-fullstack-docker/api/server.js`
+- `cloud-fullstack-docker/api/src/jobStore.js`
+- `cloud-fullstack-docker/api/test/deEnrich.api.test.js`
+- `cloud-fullstack-docker/db/init.sql`
+- `cloud-fullstack-docker/docs/DEVLOG.md`
+
+### Validation
+执行时间：2026-02-21
+
+1) 单测
+- 命令：`cd api && npm test`
+- 结果：`9 passed, 0 failed`
+
+2) API 运行态验证（memory queue/store）
+- `POST /api/run/de-enrich`（DEqMS） -> failed，`retryCount=0`
+- `POST /api/job/:id/retry`（override limma） -> 返回 `retryOf` + `retryCount=1`
+- `GET /api/job/:retryId` -> succeeded，字段一致
+- `POST /api/job/:retryId/cancel` -> `409 JOB_NOT_CANCELABLE`
+
+### Risks / Open Questions
+- bullmq active job 仍无强制终止（需 cooperative cancel 或 worker 中断机制）。
+- `canceledBy` 当前为自由文本，尚未接身份体系校验。
+
+### Next Round Options
+1. 增加 cooperative cancel token，让长任务在步骤边界可提前退出。
+2. 为 `canceledBy` 接入会话/用户上下文来源。
+3. 在 PostgreSQL 模式下补充 `retry_of/canceled_by` 维度查询接口。
+
+## Round 14
+
+### Goal
+为当前 compose 烟测链路接入 CI，并收敛 `r-engine` 分析脚本单一来源约束，避免构建漂移导致测试不稳定。
+
+### Implemented
+- 新增 GitHub Actions 工作流：
+  - `.github/workflows/compose-smoke.yml`
+  - 在 `push/pull_request (main)` 触发
+  - 运行 `cd backend && npm test`
+  - 使用 `docker/setup-buildx-action` + `docker/build-push-action` 构建 `r-engine`
+    - `cache-from: type=gha`
+    - `cache-to: type=gha,mode=max`
+  - 运行 `SKIP_API=1 scripts/compose_smoke.sh`
+- 修复 `r-engine` 单一来源漂移：
+  - `docker-compose.yml` 中 `r-engine.build.context` 改为仓库根目录，`dockerfile` 指向 `r-engine/Dockerfile`
+  - `r-engine/Dockerfile` 改为：
+    - `COPY r-engine/app.R /app/app.R`
+    - `COPY backend/r/analysis.R /app/analysis.R`
+  - 删除残留副本：`r-engine/analysis.R`
+- 文档同步：
+  - `README.md` 新增 CI 工作流说明（Backend test + Buildx cache + smoke）
+
+### Changed Files
+- `cloud-fullstack-docker/.github/workflows/compose-smoke.yml`
+- `cloud-fullstack-docker/docker-compose.yml`
+- `cloud-fullstack-docker/r-engine/Dockerfile`
+- `cloud-fullstack-docker/r-engine/analysis.R` (deleted)
+- `cloud-fullstack-docker/README.md`
+- `cloud-fullstack-docker/docs/DEVLOG.md`
+
+### Validation
+执行时间：2026-02-21
+
+1) 后端单测
+- 命令：`cd backend && npm test`
+- 结果：`33 passed, 0 failed`
+- 包含：
+  - `POST /api/config blocks illegal params`
+  - `same config with fixed seed is reproducible`
+  - `r-engine docker build uses backend/r/analysis.R as single analysis source`
+
+2) compose 脚本与配置
+- 命令：`bash -n scripts/compose_smoke.sh`
+- 结果：语法通过
+- 命令：`docker compose --env-file .env.example config`
+- 结果：通过
+
+### Risks / Open Questions
+- GitHub Actions 中 `scripts/compose_smoke.sh` 仍会再次触发 `docker compose build r-engine`；当前已通过 Buildx 预热缓存降低影响，后续可考虑在脚本中增加可选 `SKIP_BUILD=1` 路径进一步缩短时长。
+- 该 CI 路径为 `SKIP_API=1`（不覆盖运行态 API 链路），全栈运行态 E2E 仍建议在后续独立 workflow 增补。
+
+### Next Round Options
+1. 在 smoke 脚本增加 `SKIP_BUILD=1`，CI 仅执行配置检查并复用 Buildx 预构建结果。
+2. 新增 compose 全栈 E2E workflow（启动 postgres/redis/r-engine/api 后执行完整 `scripts/compose_smoke.sh`）。
+3. 为 `api` 服务补充与 `backend/r/analysis.R` 相同的单一来源约束测试。
+
+## Round 15
+
+### Goal
+完成运行态修复闭环：修复 compose 健康检查误判、稳定 smoke 验证路径，并确认六服务可健康启动。
+
+### Implemented
+- `docker-compose.yml`
+  - `api` healthcheck 从 `curl` 改为 Node `fetch`（避免 `node:alpine` 无 `curl` 导致常驻 `starting`）
+  - `frontend` healthcheck 地址改为 `127.0.0.1:5173`（避免 `localhost` 走 IPv6 造成误判）
+  - `r-engine` build context 统一为 `./r-engine`（与当前 Dockerfile 的 `COPY app.R/analysis.R` 一致）
+- `r-engine/Dockerfile`
+  - 启动命令修正为 `pr <- plumber::pr(...); pr$run(...)`，消除 `pr_run` 未解析导致的启动失败
+- `scripts/compose_smoke.sh`
+  - 新增 `SKIP_BUILD=1` 选项，用于运行态回归时跳过耗时镜像构建
+
+### Changed Files
+- `cloud-fullstack-docker/docker-compose.yml`
+- `cloud-fullstack-docker/r-engine/Dockerfile`
+- `cloud-fullstack-docker/scripts/compose_smoke.sh`
+- `cloud-fullstack-docker/docs/DEVLOG.md`
+- `cloud-fullstack-docker/docs/REVIEW_LOG.md`
+
+### Validation
+执行时间：2026-02-21
+
+1) 服务启动与健康状态
+- 命令：`docker compose --env-file .env.example up -d`
+- 命令：`docker compose --env-file .env.example ps`
+- 结果：`postgres/redis/minio/r-engine/api/frontend` 全部 `healthy`
+
+2) 运行态烟测（跳过构建）
+- 命令：`SKIP_BUILD=1 scripts/compose_smoke.sh`
+- 结果：PASS（health、analysis、artifact 下载、session/upload/delete 全链路通过）
+
+3) 审查门禁
+- 命令：`scripts/review_gate.sh runtime-acceptance-rerun`
+- 结果：PASS
+
+### Risks / Open Questions
+- `r-engine` 全量 Bioconductor 依赖构建仍重且有外部源波动风险（曾观察到 `SSL connect error`）；建议在下一轮将 Bioc 包安装改为按需或预构建镜像层。
+
+### Next Round Options
+1. 拆分 `r-engine` 轻量运行镜像和重分析镜像（按任务类型切换）。
+2. 在 CI 中默认使用 `SKIP_BUILD=1` 路径，将重构建放到独立 nightly job。
+3. 给 `frontend` 增加一个显式 `/health` 路由，避免依赖首页响应判活。

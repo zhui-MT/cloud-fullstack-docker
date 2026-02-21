@@ -1,0 +1,14 @@
+# Root build context for r-engine:
+# keep context minimal to avoid sending the full repo.
+**
+
+# Keep Docker config and r-engine runtime files
+!.dockerignore
+!r-engine/
+!r-engine/Dockerfile
+!r-engine/app.R
+
+# Keep single shared R analysis source
+!backend/
+!backend/r/
+!backend/r/analysis.R
