@@ -1,0 +1,52 @@
+name: progress-monitor
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: "30 3 * * *"
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            api/package-lock.json
+            backend/package-lock.json
+
+      - name: Install api dependencies
+        working-directory: api
+        run: npm ci
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Generate progress snapshot
+        env:
+          RUN_SMOKE: "0"
+          SMOKE_SKIP_BUILD: "1"
+        run: scripts/progress_monitor.sh
+
+      - name: Upload progress snapshot artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: progress-snapshot
+          path: |
+            docs/PROGRESS_STATUS.md
+            docs/PROGRESS_STATUS.json
+          retention-days: 14
+
+      - name: Publish summary
+        run: cat docs/PROGRESS_STATUS.md >> "$GITHUB_STEP_SUMMARY"

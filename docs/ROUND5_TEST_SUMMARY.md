@@ -1,6 +1,6 @@
 # Round 5 Test Summary
 
-- Generated at: 2026-02-21T14:14:34.164Z
+- Generated at: 2026-02-21T15:43:29.235Z
 - Regression status: **PASS**
 
 ## Regression Coverage
@@ -12,8 +12,8 @@
 ## Performance Snapshot
 - Analysis API samples: 40
 - Download API samples: 60
-- Analysis latency (ms): p50=1.36, p95=2.48, max=3.29
-- Download latency (ms): p50=0.24, p95=0.47, max=0.72
+- Analysis latency (ms): p50=2.64, p95=4.11, max=7.02
+- Download latency (ms): p50=0.46, p95=0.9, max=1.13
 
 ## Notes
 - Performance results are from local Node process loopback benchmarks (non-containerized).

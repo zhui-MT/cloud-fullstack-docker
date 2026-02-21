@@ -282,7 +282,7 @@ Response (`200`, 节选):
 - 结果：`33 passed, 0 failed`
 - 执行：`docker compose --env-file .env.example config`
 - 结果：通过（包含 `minio-init` + `api` 的 blob 存储环境注入）。
-  - 含端到端 API 验证：
+  - 含端到端 API 单测验证：
     - `POST /api/session + POST /api/upload parses FragPipe protein sample` 通过
     - `POST /api/session + POST /api/upload parses DIA-NN peptide sample` 通过
     - `POST /api/session + POST /api/upload parses MaxQuant protein sample` 通过
@@ -302,13 +302,28 @@ Response (`200`, 节选):
     - FragPipe protein 通过
     - DIA-NN peptide 通过
     - MaxQuant protein 通过
+- 执行（2026-02-21，Docker 实机 API 验证）：
+  - `curl -X POST http://localhost:4000/api/session -d '{"name":"round2-live-curl"}'`
+  - `curl -X POST http://localhost:4000/api/upload -F "sessionId=<sessionId>" -F "file=@backend/samples/fragpipe_protein.tsv"`
+- 结果（实机返回）：
+  - `detected.sourceTool=FragPipe`
+  - `detected.entityType=protein`
+  - `summary.sampleCount=2`
+  - `summary.entityCount=3`
+  - `summary.availableColumns=["entityType","sourceTool","accession","gene","quantities"]`
+  - `summary.warnings=[]`
+  - `storage.mode=blob`
+  - `storage.key=uploads/ae8f0b43-f4ea-48cf-bd01-174209cb552b/5.json`
+- 执行（2026-02-21，MinIO 对象验证）：
+  - `mc ls --recursive local/bioid-artifacts` 可检索到 `uploads/180282e3-96e1-49f6-8522-26ab51335e8b/6.json`
+  - `DELETE /api/upload/6` 返回 `blobDeleted=true` 且 `warnings=[]`
 
 ### Risks / Open Questions
 - 当前来源识别基于表头启发式规则，若用户导出列名有大幅定制，可能需要扩展 alias 映射表。
-- 当前仓库已支持 MinIO/S3 后端，但本机 Docker daemon 不可用，尚未做容器内端到端实机联调。
+- `scripts/compose_smoke.sh` 默认会触发 `r-engine` build；首次依赖下载链较长，建议在 CI 中复用镜像缓存避免超时。
 
 ### Next Round Options
-1. 做 `docker compose up` 实机联调（验证 `minio-init` 创建 bucket + 上传落地到 MinIO）。
+1. 为 `scripts/compose_smoke.sh` 增加可选 `SKIP_BUILD`，避免每次冒烟都重建 `r-engine`。
 2. 增加样本名标准化与样本注释映射（condition/replicate）。
 3. 为 FragPipe/DIA-NN/MaxQuant 补齐更多列别名与容错规则（大小写、空格、特殊分隔符）。
 
@@ -1455,28 +1470,26 @@ Response (`200`, 节选):
 为当前 compose 烟测链路接入 CI，并收敛 `r-engine` 分析脚本单一来源约束，避免构建漂移导致测试不稳定。
 
 ### Implemented
-- 新增 GitHub Actions 工作流：
+- 复核并对齐 GitHub Actions 工作流（已存在）：
   - `.github/workflows/compose-smoke.yml`
-  - 在 `push/pull_request (main)` 触发
-  - 运行 `cd backend && npm test`
+  - `push/pull_request (main)` 触发
+  - 执行 `cd backend && npm test`
   - 使用 `docker/setup-buildx-action` + `docker/build-push-action` 构建 `r-engine`
     - `cache-from: type=gha`
     - `cache-to: type=gha,mode=max`
-  - 运行 `SKIP_API=1 scripts/compose_smoke.sh`
+  - 执行 `SKIP_API=1 scripts/compose_smoke.sh`
 - 修复 `r-engine` 单一来源漂移：
   - `docker-compose.yml` 中 `r-engine.build.context` 改为仓库根目录，`dockerfile` 指向 `r-engine/Dockerfile`
   - `r-engine/Dockerfile` 改为：
     - `COPY r-engine/app.R /app/app.R`
     - `COPY backend/r/analysis.R /app/analysis.R`
-  - 删除残留副本：`r-engine/analysis.R`
+  - 保持 `r-engine/analysis.R` 删除状态（由测试持续校验）
 - 文档同步：
   - `README.md` 新增 CI 工作流说明（Backend test + Buildx cache + smoke）
 
 ### Changed Files
-- `cloud-fullstack-docker/.github/workflows/compose-smoke.yml`
 - `cloud-fullstack-docker/docker-compose.yml`
 - `cloud-fullstack-docker/r-engine/Dockerfile`
-- `cloud-fullstack-docker/r-engine/analysis.R` (deleted)
 - `cloud-fullstack-docker/README.md`
 - `cloud-fullstack-docker/docs/DEVLOG.md`
 
@@ -1551,3 +1564,571 @@ Response (`200`, 节选):
 1. 拆分 `r-engine` 轻量运行镜像和重分析镜像（按任务类型切换）。
 2. 在 CI 中默认使用 `SKIP_BUILD=1` 路径，将重构建放到独立 nightly job。
 3. 给 `frontend` 增加一个显式 `/health` 路由，避免依赖首页响应判活。
+
+## Round 16
+
+### Goal
+收敛 CI 烟测耗时：避免在 workflow 中重复执行 `r-engine` 构建。
+
+### Implemented
+- 调整 `.github/workflows/compose-smoke.yml`：
+  - 保留 `docker/build-push-action` 的 Buildx 构建与 `gha` 缓存预热。
+  - smoke 步骤改为：
+    - `SKIP_API=1`
+    - `SKIP_BUILD=1`
+  - step 名称更新为 `Compose smoke (config only)`。
+- 同步 `README.md` 的 CI 说明，明确 smoke 使用 `SKIP_API=1 SKIP_BUILD=1`。
+
+### Changed Files
+- `cloud-fullstack-docker/.github/workflows/compose-smoke.yml`
+- `cloud-fullstack-docker/README.md`
+- `cloud-fullstack-docker/docs/DEVLOG.md`
+
+### Validation
+执行时间：2026-02-21
+
+1) smoke（配置路径）
+- 命令：`SKIP_API=1 SKIP_BUILD=1 scripts/compose_smoke.sh`
+- 结果：PASS
+  - `[smoke] compose config`
+  - `[smoke] SKIP_BUILD=1, skip compose build`
+  - `[smoke] SKIP_API=1, skip runtime API checks`
+
+### Risks / Open Questions
+- 当前 workflow 仍不覆盖运行态 API 链路（仅配置路径门禁）；完整链路需单独全栈 E2E 任务。
+
+### Next Round Options
+1. 新增 nightly full-smoke（含 `docker compose up -d` + 运行态 API 校验）。
+2. 将 `backend npm test` 与 `compose-smoke` 拆成并行 job，缩短 PR 等待时间。
+3. 为 full-smoke 增加超时与失败日志采集（`docker compose logs` artifact）。
+
+## Round 17
+
+### Goal
+补齐 CI 运行态覆盖：在独立 workflow 中定时执行 full-stack compose + API smoke，并保留失败现场日志。
+
+### Implemented
+- 新增 `.github/workflows/full-smoke-nightly.yml`：
+  - 触发方式：
+    - `schedule`: 每日 `03:00 UTC`
+    - `workflow_dispatch`: 手动触发
+  - 执行路径：
+    - `docker compose --env-file .env.example up -d --build`
+    - `docker compose --env-file .env.example ps`
+    - `SKIP_BUILD=1 scripts/compose_smoke.sh`（运行态链路）
+  - 失败排查：
+    - 采集 `ps/logs/images` 到 `/tmp/compose-logs`
+    - 使用 `actions/upload-artifact@v4` 上传 `compose-logs`（保留 7 天）
+  - 结束清理：
+    - `docker compose down -v --remove-orphans`（`if: always()`）
+- 同步 `README.md` CI 章节，新增 nightly full-smoke 说明。
+
+### Changed Files
+- `cloud-fullstack-docker/.github/workflows/full-smoke-nightly.yml`
+- `cloud-fullstack-docker/README.md`
+- `cloud-fullstack-docker/docs/DEVLOG.md`
+
+### Validation
+执行时间：2026-02-21
+
+1) compose 配置
+- 命令：`docker compose --env-file .env.example config`
+- 结果：通过
+
+2) 运行态 smoke（本地）
+- 命令：`SKIP_BUILD=1 scripts/compose_smoke.sh`
+- 结果：PASS（health/analysis/artifact/session/upload/delete 全链路通过）
+
+3) 后端回归
+- 命令：`cd backend && npm test`
+- 结果：`33 passed, 0 failed`
+
+### Risks / Open Questions
+- full-stack nightly 仍依赖外部镜像/包源稳定性（特别是 R 依赖下载）；若出现偶发网络失败，建议后续补重试或预构建镜像策略。
+
+### Next Round Options
+1. 为 full-smoke workflow 增加失败重试（仅对 `compose up` 阶段）。
+2. 将 `compose-smoke` 与 `full-smoke-nightly` 的日志采集脚本抽成复用脚本。
+3. 增加 `workflow_dispatch` 输入参数（是否启用 enrichment 重依赖构建）。
+
+## Round 18
+
+### Goal
+提高 nightly full-smoke 的抗抖动能力与排障一致性：为 `compose up` 增加重试，并把日志采集下沉为复用脚本。
+
+### Implemented
+- 新增 `scripts/compose_up_retry.sh`
+  - 支持 `COMPOSE_UP_RETRIES`（默认 `1`）与 `COMPOSE_UP_RETRY_DELAY_SEC`（默认 `30`）。
+  - 执行 `docker compose --env-file .env.example up -d --build` 的重试封装。
+- 新增 `scripts/collect_compose_logs.sh`
+  - 统一采集 `ps/logs/images/config` 到目标目录（默认 `/tmp/compose-logs`）。
+- 更新 `.github/workflows/full-smoke-nightly.yml`
+  - `Compose up` 步骤改为调用 `scripts/compose_up_retry.sh`。
+  - `Collect compose logs` 步骤改为调用 `scripts/collect_compose_logs.sh /tmp/compose-logs`。
+  - `workflow_dispatch` 新增输入：
+    - `install_enrichment`（`0/1`）
+  - 手动触发时可设置 `R_ENGINE_INSTALL_ENRICHMENT_PACKAGES=1`。
+- 更新 `README.md` CI 章节，补充上述重试/日志脚本与手动输入说明。
+
+### Changed Files
+- `cloud-fullstack-docker/scripts/compose_up_retry.sh`
+- `cloud-fullstack-docker/scripts/collect_compose_logs.sh`
+- `cloud-fullstack-docker/.github/workflows/full-smoke-nightly.yml`
+- `cloud-fullstack-docker/README.md`
+- `cloud-fullstack-docker/docs/DEVLOG.md`
+
+### Validation
+执行时间：2026-02-21
+
+1) 脚本语法
+- 命令：`bash -n scripts/compose_up_retry.sh scripts/collect_compose_logs.sh`
+- 结果：通过
+
+2) 日志采集脚本
+- 命令：`scripts/collect_compose_logs.sh /tmp/compose-logs-test`
+- 结果：通过（生成 `ps.txt/services.log/images.txt/config.yml`）
+
+3) 运行态 smoke
+- 命令：`SKIP_BUILD=1 scripts/compose_smoke.sh`
+- 结果：PASS
+
+4) 后端回归
+- 命令：`cd backend && npm test`
+- 结果：`33 passed, 0 failed`
+
+### Risks / Open Questions
+- `compose up` 重试可缓解临时网络抖动，但无法覆盖长期上游源不可用场景；后续仍建议引入预构建镜像或私有缓存源。
+
+### Next Round Options
+1. 给 `compose_up_retry.sh` 增加按错误类型快速失败（如配置错误不重试）。
+2. 在 nightly 中上传 `docker compose events` 输出，增强时序定位能力。
+3. 给 `install_enrichment` 触发路径补一次独立周跑（weekly）任务，避免日常 nightly 变慢。
+
+## Round 19
+
+### Goal
+继续提高 CI 稳定性与可观测性：实现 `compose up` 快速失败、补齐 compose events 采集、并新增 weekly enrichment full-smoke。
+
+### Implemented
+- `scripts/compose_up_retry.sh`
+  - 新增 preflight：
+    - `docker info` 可用性检查
+    - `docker compose config` 配置检查（失败直接退出，不重试）
+  - 新增非重试错误匹配：
+    - `COMPOSE_UP_NON_RETRYABLE_REGEX`
+    - 命中后立即停止重试并失败返回
+  - 每次 `compose up` 输出重定向到临时日志，失败时回放日志后再决策是否重试。
+- `scripts/collect_compose_logs.sh`
+  - 新增 `events` 采集：
+    - `docker compose events --json --since --until > events.jsonl`
+    - 支持 `timeout`（可用时）防止挂起
+  - 现统一产出：`ps.txt/services.log/images.txt/config.yml/events.jsonl`
+- 新增 `.github/workflows/full-smoke-enrichment-weekly.yml`
+  - 触发：每周 `04:00 UTC`（周日）+ 手动触发
+  - 固定 `R_ENGINE_INSTALL_ENRICHMENT_PACKAGES=1`
+  - 复用 `scripts/compose_up_retry.sh` 与 `scripts/collect_compose_logs.sh`
+  - 上传 artifact：`compose-logs-enrichment`
+- 更新 `README.md` CI 章节：
+  - nightly artifact 说明增加 `events`
+  - 新增 weekly enrichment workflow 描述
+
+### Changed Files
+- `cloud-fullstack-docker/scripts/compose_up_retry.sh`
+- `cloud-fullstack-docker/scripts/collect_compose_logs.sh`
+- `cloud-fullstack-docker/.github/workflows/full-smoke-enrichment-weekly.yml`
+- `cloud-fullstack-docker/README.md`
+- `cloud-fullstack-docker/docs/DEVLOG.md`
+
+### Validation
+执行时间：2026-02-21
+
+1) 脚本语法
+- 命令：`bash -n scripts/compose_up_retry.sh scripts/collect_compose_logs.sh`
+- 结果：通过
+
+2) 快速失败路径（compose_up_retry）
+- 命令：`COMPOSE_ENV_FILE=.env.missing COMPOSE_UP_RETRIES=3 scripts/compose_up_retry.sh`
+- 结果：在 preflight `compose config` 阶段直接失败（未进入重试循环）
+
+3) 日志采集脚本
+- 命令：`scripts/collect_compose_logs.sh /tmp/compose-logs-test2`
+- 结果：通过，输出包含 `events.jsonl`
+
+4) 运行态 smoke
+- 命令：`SKIP_BUILD=1 scripts/compose_smoke.sh`
+- 结果：PASS
+
+5) 后端回归
+- 命令：`cd backend && npm test`
+- 结果：`33 passed, 0 failed`
+
+### Risks / Open Questions
+- `events.jsonl` 在部分 Docker 状态下可能只记录错误信息（如镜像缺失），但依然有助于定位构建/运行期异常。
+
+### Next Round Options
+1. 把 `COMPOSE_UP_NON_RETRYABLE_REGEX` 外置到 `.env.example`，便于 CI 无代码调整。
+2. 在 weekly enrichment workflow 增加 `backend npm test` 前置门禁。
+3. 对 `compose-logs` artifact 增加大小裁剪策略（避免极端日志过大）。
+
+## Round 4 (API Refresh)
+
+### Goal
+继续第 4 阶段实现收口（`api/` 服务）：
+- 支持多 DE 引擎入口（`limma/DEqMS/MSstats/SAM/RankProd`，先打通 `limma`）
+- 落地 `POST /api/run/:module`、`GET /api/job/:id`
+- 接入 GO/KEGG（`clusterProfiler`，本地计算链路）
+- 跑通端到端任务并输出关键结果字段与日志
+
+### Implemented
+- `api/src/modules/deEnrich.js`
+  - 保持多引擎入口校验：`limma/DEqMS/MSstats/SAM/RankProd`
+  - 仅 `limma` 落地，其他入口返回 `ENGINE_NOT_IMPLEMENTED`
+  - `de/enrichment/de-enrich` 三模块全部接入取消上下文（`context.throwIfCanceled`）
+  - JS fallback 在循环计算中加取消检查，避免取消后继续长计算
+- `api/src/jobManager.js`
+  - In-memory 任务执行新增协作取消控制器（`AbortController`）
+  - running 任务收到 cancel 时触发 `abort()`，runner 可即时退出
+  - 统一识别 `JOB_CANCELED/AbortError` 并落库为 `canceled`
+- `api/src/rRunner.js`
+  - R 执行链路升级为：
+    - 先尝试远端 `R_ENGINE_URL`
+    - 失败后尝试本地 `Rscript`（可关：`R_ENGINE_LOCAL_DISABLE=1`）
+    - 均失败再抛错，由模块层回退 JS
+  - 远端 `fetch` 与本地 `Rscript` 子进程都接入取消信号
+- `api/r/local_de_enrich.R`
+  - 新增本地 R 入口脚本：读取 stdin JSON，调用 `backend/r/analysis.R::run_de_enrich_pipeline`
+  - 输出统一 JSON（`ok/meta/result`），用于本地 clusterProfiler 计算链路
+- `api/test/deEnrich.api.test.js`
+  - running cancel 用例升级为协作式长任务，校验中途取消不会执行到“slow task finished”
+
+### Changed Files
+- `cloud-fullstack-docker/api/src/jobManager.js`
+- `cloud-fullstack-docker/api/src/modules/deEnrich.js`
+- `cloud-fullstack-docker/api/src/rRunner.js`
+- `cloud-fullstack-docker/api/r/local_de_enrich.R`
+- `cloud-fullstack-docker/api/test/deEnrich.api.test.js`
+- `cloud-fullstack-docker/docs/DEVLOG.md`
+
+### Validation
+执行时间：2026-02-21
+
+1) 单测
+- 命令：`cd api && npm test`
+- 结果：`9 passed, 0 failed`
+
+2) 端到端任务（memory queue/store）
+- 启动命令：`cd api && API_PORT=4101 JOB_QUEUE_MODE=memory JOB_STORE_MODE=memory npm run start`
+- 执行命令：`API_URL=http://127.0.0.1:4101 api/scripts/e2e_round4.sh`
+- 结果：PASS（job 首轮即 `succeeded`）
+
+关键结果字段（`module=de-enrich`, `engine=limma`）：
+- `status=succeeded`
+- `result.de.summary.totalGenes=20`
+- `result.de.summary.significantGenes=14`
+- `result.enrichment.go[0].id=GO:0006954`
+- `result.enrichment.kegg[0].id=hsa04151`
+- `result.runtime.backend=JS_FALLBACK`
+- `result.runtime.deEngine=limma-approx`
+- `result.runtime.enrichmentEngine=hypergeom-lite`
+
+关键日志行（同一 job）：
+- `Running limma + clusterProfiler via R runtime`
+- `R_ENGINE_URL is not configured, skipping remote r-engine`
+- `Trying local Rscript runner: .../api/r/local_de_enrich.R`
+- `Local Rscript runner failed: Rscript command not found`
+- `R chain unavailable, fallback to JS: R runtime unavailable: local=Rscript command not found`
+- `Job completed`
+
+3) 多引擎入口校验（`DEqMS`）
+- `POST /api/run/de-enrich {"engine":"DEqMS"}` -> job `failed`
+- `error.code=ENGINE_NOT_IMPLEMENTED`
+
+### Risks / Open Questions
+- 当前机器无 `Rscript`，本轮 E2E 仍走 JS fallback；真实 `clusterProfiler` 产出需在具备 R 环境时复测。
+- BullMQ active job 仍不支持强制终止（当前协作取消实现覆盖 in-memory runner）。
+
+### Next Round Options
+1. 在运行环境安装 `Rscript + clusterProfiler + org.Hs.eg.db`，验证本地 R 分支真实产出。
+2. 为 BullMQ worker 引入可中断执行协议（跨进程 cancel token / heartbeat 终止）。
+3. 为 `de/enrichment` 增加 R 分支的契约测试（字段完整性与 GO/KEGG 结果结构）。
+
+## Round 4 (API Verification Boost)
+
+### Goal
+继续第 4 阶段验证闭环：
+- 增加 `runtime=R` 自动化验证（避免仅覆盖 JS fallback）
+- 强化 e2e 输出，直接给出关键结果字段与日志摘要
+
+### Implemented
+- `api/test/deEnrich.api.test.js`
+  - 新增 mock r-engine HTTP 服务（`/run/de-enrich`）
+  - 新增用例：`POST /api/run/de-enrich uses remote r-engine when available`
+    - 断言 `runtime.backend=R`
+    - 断言 `runtime.deEngine=limma`
+    - 断言 `runtime.enrichmentEngine=clusterProfiler`
+    - 断言 GO/KEGG 关键字段存在（`go[0].id`、`kegg[0].id`）
+    - 断言日志含 `Remote r-engine completed` 且无 fallback
+- `api/scripts/e2e_round4.sh`
+  - 新增 `extract_highlights` 输出：
+    - `status/module/engine/retryCount`
+    - `runtimeBackend/deSignificantGenes/goTopId/keggTopId/errorCode`
+    - `logHighlights`（关键日志摘要）
+  - 终态判断扩展为 `succeeded|failed|canceled`
+  - 新增 `ASSERT_GO_KEGG=1` 开关：对 `goTopId/keggTopId` 做非空断言
+  - 新增 `EXPECT_GO_ID/EXPECT_KEGG_ID` 开关：对 top id 做精确匹配断言
+
+### Changed Files
+- `cloud-fullstack-docker/api/test/deEnrich.api.test.js`
+- `cloud-fullstack-docker/api/scripts/e2e_round4.sh`
+- `cloud-fullstack-docker/docs/DEVLOG.md`
+
+### Validation
+执行时间：2026-02-21
+
+1) 单测
+- 命令：`cd api && npm test`
+- 结果：`10 passed, 0 failed`
+- 新增通过用例：
+  - `POST /api/run/de-enrich uses remote r-engine when available`
+
+2) 端到端脚本（关键输出增强）
+- 命令：`API_URL=http://127.0.0.1:4101 api/scripts/e2e_round4.sh`
+- 输出新增示例：
+  - `highlights={"status":"succeeded","module":"de-enrich","engine":"limma","runtimeBackend":"JS_FALLBACK","deSignificantGenes":14,"goTopId":"GO:0006954","keggTopId":"hsa04151","errorCode":null,...}`
+- 命令：`API_URL=http://127.0.0.1:4101 ASSERT_GO_KEGG=1 api/scripts/e2e_round4.sh`
+- 结果：通过（GO/KEGG 非空断言命中）
+- 命令：`API_URL=http://127.0.0.1:4101 ASSERT_GO_KEGG=1 EXPECT_GO_ID=GO:0006954 EXPECT_KEGG_ID=hsa04151 api/scripts/e2e_round4.sh`
+- 结果：通过（GO/KEGG top id 精确匹配）
+- 命令：`bash -n api/scripts/e2e_round4.sh`
+- 结果：语法通过
+
+### Risks / Open Questions
+- mock r-engine 用例验证了 API 合约与 R 分支路由，不等价于真实 `clusterProfiler` 生物学结果正确性；真实结果仍需在具备 R 包环境复测。
+
+### Next Round Options
+1. 在可用 R 环境执行一次 `EXPECT_RUNTIME=R` 的真实 e2e，并固化输出快照。
+2. 在 CI 增加轻量 mock-r-engine 流水线，持续校验 R 分支协议兼容性。
+3. 给 e2e 增加“日志关键字必须命中”断言开关（例如 `EXPECT_LOG=Remote r-engine completed`）。
+
+## Progress Monitor
+
+### Goal
+提供可重复执行的“当前开发进度监控”入口，减少手工汇总成本并统一汇报口径。
+
+### Implemented
+- 新增 `scripts/progress_monitor.sh`：
+  - 输出默认文件：`docs/PROGRESS_STATUS.md`
+  - 采集项：`git` 变更规模、目录热度分布、最新 DEVLOG 节点、测试状态、review gate、compose smoke、运行中服务数、阻塞项
+  - 支持开关：
+    - `RUN_TESTS=0`：跳过 `api/backend` 测试
+    - `RUN_GATE=0`：跳过 `review_gate`
+    - `RUN_SMOKE=0`：跳过 `compose_smoke`
+- 更新 `README.md` 与 `docs/VERSION_CONTROL.md`，补充进度快照命令和常用开关示例。
+
+### Changed Files
+- `cloud-fullstack-docker/scripts/progress_monitor.sh`
+- `cloud-fullstack-docker/README.md`
+- `cloud-fullstack-docker/docs/VERSION_CONTROL.md`
+- `cloud-fullstack-docker/docs/DEVLOG.md`
+
+### Validation
+执行时间：2026-02-21
+
+1) 语法检查
+- 命令：`bash -n scripts/progress_monitor.sh`
+- 结果：通过
+
+2) 快照生成
+- 命令：`scripts/progress_monitor.sh`
+- 结果：生成 `docs/PROGRESS_STATUS.md`
+
+### Risks / Open Questions
+- 默认会执行测试与烟测；在开发机器资源紧张或服务未启动时，建议先使用 `RUN_SMOKE=0` 或 `RUN_TESTS=0` 快速模式。
+
+### Next Round Options
+1. 增加 `--json` 输出，便于接入 CI 或看板系统。
+2. 增加与上一份快照的 diff（新增阻塞项/解除阻塞项）。
+3. 将关键指标（测试耗时、改动规模）做趋势线可视化。
+
+## Progress Monitor v2
+
+### Goal
+把进度监控升级为可机读与可追踪：支持 JSON 输出、与上一快照差异对比，并接入 CI 定时执行。
+
+### Implemented
+- 升级 `scripts/progress_monitor.sh`：
+  - 新增 JSON 产物（默认 `docs/PROGRESS_STATUS.json`）
+  - 新增 `PREV_JSON_FILE` 比较逻辑，输出 `delta`（改动规模变化、阻塞项新增/解除、状态切换）
+  - 新增临时文件自动清理（`trap cleanup EXIT`）
+- 新增 CI 工作流：
+  - `.github/workflows/progress-monitor.yml`
+  - 触发：`push main`、`workflow_dispatch`、nightly cron
+  - 产物：上传 `docs/PROGRESS_STATUS.md` 与 `docs/PROGRESS_STATUS.json`
+  - 在 Actions Summary 展示 Markdown 快照
+- 更新文档：
+  - `README.md` 增加 JSON 与 `PREV_JSON_FILE` 用法
+  - `docs/VERSION_CONTROL.md` 增加进度快照产物与对比说明
+
+### Changed Files
+- `cloud-fullstack-docker/scripts/progress_monitor.sh`
+- `cloud-fullstack-docker/.github/workflows/progress-monitor.yml`
+- `cloud-fullstack-docker/README.md`
+- `cloud-fullstack-docker/docs/VERSION_CONTROL.md`
+- `cloud-fullstack-docker/docs/DEVLOG.md`
+
+### Validation
+执行时间：2026-02-21
+
+1) 语法检查
+- 命令：`bash -n scripts/progress_monitor.sh`
+- 结果：通过
+
+2) 本地快照
+- 命令：`RUN_SMOKE=0 scripts/progress_monitor.sh`
+- 结果：生成 `docs/PROGRESS_STATUS.md` 与 `docs/PROGRESS_STATUS.json`
+
+3) JSON 差异字段验证
+- 命令：`rg -n '"delta"|overall_status|blockers' docs/PROGRESS_STATUS.json`
+- 结果：包含 `overall_status`、`blockers` 与 `delta.since_previous_snapshot`
+
+### Risks / Open Questions
+- `push main` 触发会带来较高频快照任务；若后续 CI 成本上升，可改为 `schedule + manual`。
+
+### Next Round Options
+1. 增加 `--strict` 模式：存在 blocker 时脚本返回非 0，直接作为 CI gate。
+2. 输出 Prometheus-friendly 指标文件（`key=value`）供监控系统拉取。
+3. 在 JSON 中加入近 7 天趋势聚合（需保留历史快照目录）。
+
+## Round 4 (CI Gate Automation)
+
+### Goal
+把第 4 阶段 API 链路固化为 CI 门禁，持续验证：
+- `POST /api/run/:module` + `GET /api/job/:id` 端到端可用
+- limma + GO/KEGG 结果结构字段完整
+- `runtime=R` 分支不会因环境差异漂移
+
+### Implemented
+- 新增 mock r-engine 脚本：
+  - `api/scripts/mock_r_engine.js`
+  - 提供 `/health` 与 `/run/de-enrich`，返回稳定的 limma + GO/KEGG 结果
+- 新增 round4 CI 本地/流水线入口：
+  - `api/scripts/ci_round4_mock_remote.sh`
+  - 自动启动 mock r-engine 与 api，执行 `api/scripts/e2e_round4.sh` 并断言：
+    - `EXPECT_RUNTIME=R`
+    - `ASSERT_GO_KEGG=1`
+    - `EXPECT_GO_ID=GO:0006954`
+    - `EXPECT_KEGG_ID=hsa04060`
+  - 支持 `LOG_DIR` 外部注入并自动创建目录，便于 CI artifact 收集
+  - 失败时自动输出 `api.log` 与 `mock-r-engine.log`
+- `api/package.json`
+  - 新增脚本：`npm run ci:round4`
+- 新增 GitHub Actions workflow：
+  - `.github/workflows/api-round4.yml`
+  - 在 `push/pull_request (main)` 执行：
+    - `cd api && npm ci && npm test`
+    - `cd api && npm run ci:round4`
+  - 增加 `paths` 过滤，仅在 `api/**` 和相关文档/workflow 变更时触发
+  - 新增 `api-round4-logs` artifact 上传（保留 7 天）
+- `api/scripts/e2e_round4.sh`
+  - 增加 `EXPECT_GO_ID` / `EXPECT_KEGG_ID` 精确匹配断言开关
+  - 增加 `EXPECT_LOGS` 日志关键字断言开关（逗号分隔）
+- `README.md`
+  - 新增 `api-round4` workflow 说明与断言项说明
+
+### Changed Files
+- `cloud-fullstack-docker/api/scripts/mock_r_engine.js`
+- `cloud-fullstack-docker/api/scripts/ci_round4_mock_remote.sh`
+- `cloud-fullstack-docker/api/scripts/e2e_round4.sh`
+- `cloud-fullstack-docker/api/package.json`
+- `cloud-fullstack-docker/.github/workflows/api-round4.yml`
+- `cloud-fullstack-docker/README.md`
+- `cloud-fullstack-docker/docs/DEVLOG.md`
+
+### Validation
+执行时间：2026-02-21
+
+1) round4 CI gate（本地模拟）
+- 命令：`cd api && npm run ci:round4`
+- 结果：PASS
+- 关键输出：
+  - `runtime=R significantGenes=3`
+  - `goTopId=GO:0006954`
+  - `keggTopId=hsa04060`
+  - `logHighlights` 包含 `Remote r-engine completed`
+- 断言项包含：
+  - `EXPECT_LOGS="Running limma + clusterProfiler via R runtime,Remote r-engine completed"`
+
+2) API 单测
+- 命令：`cd api && npm test`
+- 结果：`10 passed, 0 failed`
+
+3) 脚本语法
+- 命令：`bash -n api/scripts/e2e_round4.sh`
+- 结果：通过
+- 命令：`bash -n api/scripts/ci_round4_mock_remote.sh`
+- 结果：通过
+
+4) 日志目录与 artifact 预演
+- 命令：`LOG_DIR=/tmp/api-round4-logs-local npm run ci:round4`
+- 结果：通过，生成：
+  - `/tmp/api-round4-logs-local/api.log`
+  - `/tmp/api-round4-logs-local/mock-r-engine.log`
+
+### Risks / Open Questions
+- 当前 CI gate 使用 mock r-engine 验证协议与字段，不覆盖真实 `clusterProfiler` 统计结果正确性；真实 R 包链路仍建议保留 nightly/full-smoke 复测。
+
+### Next Round Options
+1. 在具备 R 依赖的 runner 上补一条真实 `Rscript` 分支用例，和 mock 分支并行验证。
+2. 为 `EXPECT_LOGS` 增加“严格顺序匹配”模式，避免仅命中无关日志。
+3. 在 `api-round4.yml` 增加手动参数化触发（可切换 mock/real 两种模式）。
+
+## Round 6 (r-engine Build Profile Hardening)
+
+### Goal
+降低 `r-engine` 默认构建复杂度并保留可选富集能力，同时完成运行态复验与审查闭环。
+
+### Implemented
+- `r-engine` 默认构建为轻量模式（核心 API 依赖 + `limma`）。
+- 富集重依赖改为可选开关：
+  - `R_ENGINE_INSTALL_ENRICHMENT_PACKAGES=0|1`
+  - 打开后才安装 `clusterProfiler` 与 `org.Hs.eg.db`
+- 在 `docker-compose.yml` 透传 `R_ENGINE_CRAN_REPO` 与 `R_ENGINE_INSTALL_ENRICHMENT_PACKAGES` 构建参数。
+- 在 `.env.example` 增加默认值与注释，明确“默认轻量 / 可选全量”。
+- README 新增：
+  - `SKIP_BUILD=1 scripts/compose_smoke.sh`
+  - 启用富集重依赖的构建方式
+
+### Changed Files
+- `cloud-fullstack-docker/r-engine/Dockerfile`
+- `cloud-fullstack-docker/docker-compose.yml`
+- `cloud-fullstack-docker/.env.example`
+- `cloud-fullstack-docker/README.md`
+- `cloud-fullstack-docker/docs/DEVLOG.md`
+
+### Validation
+执行时间：2026-02-21
+
+1) 镜像构建（轻量模式）
+- 命令：`docker compose --env-file .env.example build r-engine`
+- 结果：PASS（镜像构建成功）
+
+2) 服务启动（复用已构建镜像）
+- 命令：`docker compose --env-file .env.example up -d r-engine`
+- 结果：PASS（`r-engine` 启动并进入 `healthy`）
+
+3) 六服务运行态冒烟
+- 命令：`SKIP_BUILD=1 scripts/compose_smoke.sh`
+- 结果：PASS（全链路通过）
+
+4) 异常记录
+- 命令：`docker compose --env-file .env.example up -d --build r-engine`
+- 结果：两次出现退出码 `130`（外部中断，均发生在长编译阶段；非业务逻辑断言失败）
+
+### Risks / Open Questions
+- `r-engine` 在 arm64 下仍存在构建耗时较长问题（`httpuv/stringi` 编译阶段明显）。
+- 外部网络波动会放大 R 包下载失败概率，虽有重试机制但会延长构建时间。
+
+### Next Round Options
+1. 新增 CI 变量，默认运行态 smoke 走 `SKIP_BUILD=1`，仅夜间任务执行 full build。
+2. 继续瘦身 `r-engine` apt 依赖（按包级别核减）并基于构建时间做 A/B 记录。
+3. 把富集能力拆为单独镜像标签（`r-engine:core` / `r-engine:enrich`）降低日常迭代成本。

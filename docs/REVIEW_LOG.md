@@ -125,3 +125,31 @@
 - Required fixes: none
 - Next round focus:
   - 收敛 `r-engine` Dockerfile 的重依赖安装策略，降低构建抖动。
+
+## Review 6
+
+### Input
+- Round: monitor-r-engine-build-profile-2026-02-21
+- Goal: 复核 `r-engine` 轻量默认构建 + 可选富集构建策略是否可运行、可回归
+- Files: `r-engine/Dockerfile`, `docker-compose.yml`, `.env.example`, `README.md`, `docs/DEVLOG.md`
+- Validation:
+  - `docker compose --env-file .env.example build r-engine`
+  - `docker compose --env-file .env.example up -d r-engine`
+  - `docker compose --env-file .env.example ps`
+  - `SKIP_BUILD=1 scripts/compose_smoke.sh`
+
+### Findings
+- Blockers: none
+- Risks:
+  - `docker compose up -d --build r-engine` 在长编译阶段两次出现退出码 `130`（外部中断），full build 稳定性仍受环境影响。
+  - 轻量默认模式不包含 `clusterProfiler/org.Hs.eg.db`，如直接调用 GO/KEGG 富集需显式开启安装开关。
+- Notes:
+  - 轻量模式镜像构建成功，`r-engine` 运行态 `healthy`。
+  - 六服务运行态 smoke（`SKIP_BUILD=1`）通过，当前主链路可用。
+
+### Decision
+- Status: pass
+- Required fixes: none
+- Next round focus:
+  1) 优化 full build 触发策略（默认跳过重建，nightly 再执行）。
+  2) 继续削减 `r-engine` 镜像层依赖并记录构建时延改善。

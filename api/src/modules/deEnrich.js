@@ -11,7 +11,8 @@ function buildModuleRunners() {
   };
 }
 
-async function runDeModule(payload, appendLog) {
+async function runDeModule(payload, appendLog, context) {
+  maybeThrowCanceled(context);
   const prepared = makeDemoPayload(payload);
   validateEngine(prepared.engine);
 
@@ -21,7 +22,7 @@ async function runDeModule(payload, appendLog) {
 
   try {
     appendLog('info', 'Trying limma via R runtime');
-    const result = await runRDeEnrich({ mode: 'de', payload: prepared }, appendLog);
+    const result = await runRDeEnrich({ mode: 'de', payload: prepared }, appendLog, context);
     result.runtime = { backend: 'R', deEngine: 'limma' };
     return {
       module: 'de',
@@ -29,8 +30,9 @@ async function runDeModule(payload, appendLog) {
       ...result,
     };
   } catch (error) {
+    if (isCanceledError(error)) throw error;
     appendLog('warn', `R limma unavailable, fallback to JS: ${error.message}`);
-    const result = runJsDe(prepared);
+    const result = runJsDe(prepared, context);
     result.runtime = { backend: 'JS_FALLBACK', deEngine: 'limma-approx' };
     return {
       module: 'de',
@@ -40,7 +42,8 @@ async function runDeModule(payload, appendLog) {
   }
 }
 
-async function runEnrichmentModule(payload, appendLog) {
+async function runEnrichmentModule(payload, appendLog, context) {
+  maybeThrowCanceled(context);
   const prepared = makeDemoPayload(payload);
   validateEngine(prepared.engine);
 
@@ -50,7 +53,7 @@ async function runEnrichmentModule(payload, appendLog) {
 
   try {
     appendLog('info', 'Running enrichment via R runtime (clusterProfiler)');
-    const result = await runRDeEnrich({ mode: 'enrichment', payload: prepared }, appendLog);
+    const result = await runRDeEnrich({ mode: 'enrichment', payload: prepared }, appendLog, context);
     result.runtime = { backend: 'R', enrichmentEngine: 'clusterProfiler' };
     return {
       module: 'enrichment',
@@ -58,9 +61,10 @@ async function runEnrichmentModule(payload, appendLog) {
       ...result,
     };
   } catch (error) {
+    if (isCanceledError(error)) throw error;
     appendLog('warn', `R enrichment unavailable, fallback to JS: ${error.message}`);
-    const deResult = runJsDe(prepared);
-    const enrich = runJsEnrichment(deResult.significantGenes);
+    const deResult = runJsDe(prepared, context);
+    const enrich = runJsEnrichment(deResult.significantGenes, context);
     return {
       module: 'enrichment',
       engine: prepared.engine,
@@ -72,7 +76,8 @@ async function runEnrichmentModule(payload, appendLog) {
   }
 }
 
-async function runDeEnrichModule(payload, appendLog) {
+async function runDeEnrichModule(payload, appendLog, context) {
+  maybeThrowCanceled(context);
   const prepared = makeDemoPayload(payload);
   validateEngine(prepared.engine);
 
@@ -82,7 +87,7 @@ async function runDeEnrichModule(payload, appendLog) {
 
   try {
     appendLog('info', 'Running limma + clusterProfiler via R runtime');
-    const result = await runRDeEnrich({ mode: 'de-enrich', payload: prepared }, appendLog);
+    const result = await runRDeEnrich({ mode: 'de-enrich', payload: prepared }, appendLog, context);
     result.runtime = { backend: 'R', deEngine: 'limma', enrichmentEngine: 'clusterProfiler' };
     return {
       module: 'de-enrich',
@@ -90,9 +95,10 @@ async function runDeEnrichModule(payload, appendLog) {
       ...result,
     };
   } catch (error) {
+    if (isCanceledError(error)) throw error;
     appendLog('warn', `R chain unavailable, fallback to JS: ${error.message}`);
-    const deResult = runJsDe(prepared);
-    const enrichment = runJsEnrichment(deResult.significantGenes);
+    const deResult = runJsDe(prepared, context);
+    const enrichment = runJsEnrichment(deResult.significantGenes, context);
     return {
       module: 'de-enrich',
       engine: prepared.engine,
@@ -118,7 +124,8 @@ function makeNotImplementedEngineError(engine) {
   return err;
 }
 
-function runJsDe(prepared) {
+function runJsDe(prepared, context) {
+  maybeThrowCanceled(context);
   const groupA = prepared.de.groupA;
   const groupB = prepared.de.groupB;
   const sampleGroups = prepared.samples.map((s) => s.group);
@@ -137,7 +144,12 @@ function runJsDe(prepared) {
     throw err;
   }
 
-  const rows = prepared.matrix.map((row) => {
+  const rows = [];
+  for (let idx = 0; idx < prepared.matrix.length; idx += 1) {
+    if (idx % 4 === 0) {
+      maybeThrowCanceled(context);
+    }
+    const row = prepared.matrix[idx];
     const a = indexA.map((idx) => row.values[idx]);
     const b = indexB.map((idx) => row.values[idx]);
     const meanA = mean(a);
@@ -146,12 +158,12 @@ function runJsDe(prepared) {
     const t = welchT(a, b);
     const pvalue = twoTailPFromZ(Math.abs(t));
 
-    return {
+    rows.push({
       gene: row.gene,
       logFC: round(logFC),
       pvalue,
-    };
-  });
+    });
+  }
 
   const padj = bhAdjust(rows.map((x) => x.pvalue));
   const withAdj = rows.map((row, idx) => ({ ...row, adjPValue: padj[idx] }));
@@ -177,7 +189,8 @@ function runJsDe(prepared) {
   };
 }
 
-function runJsEnrichment(genes) {
+function runJsEnrichment(genes, context) {
+  maybeThrowCanceled(context);
   const uniqueGenes = Array.from(new Set(genes));
   const sets = [
     {
@@ -210,7 +223,10 @@ function runJsEnrichment(genes) {
   const q = uniqueGenes.length;
 
   const rows = sets
-    .map((set) => {
+    .map((set, idx) => {
+      if (idx % 2 === 0) {
+        maybeThrowCanceled(context);
+      }
       const overlap = set.genes.filter((g) => uniqueGenes.includes(g));
       const k = overlap.length;
       if (k === 0) return null;
@@ -312,6 +328,17 @@ function round(num) {
 
 function clamp01(x) {
   return Math.min(1, Math.max(0, x));
+}
+
+function maybeThrowCanceled(context) {
+  if (context && typeof context.throwIfCanceled === 'function') {
+    context.throwIfCanceled();
+  }
+}
+
+function isCanceledError(error) {
+  if (!error) return false;
+  return error.code === 'JOB_CANCELED' || error.name === 'AbortError';
 }
 
 module.exports = {

@@ -1,0 +1,51 @@
+name: full-smoke-enrichment-weekly
+
+on:
+  schedule:
+    - cron: "0 4 * * 0"
+  workflow_dispatch:
+
+jobs:
+  full-smoke-enrichment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Compose up (enrichment stack, retry)
+        env:
+          COMPOSE_UP_RETRIES: "1"
+          COMPOSE_UP_RETRY_DELAY_SEC: "30"
+          R_ENGINE_INSTALL_ENRICHMENT_PACKAGES: "1"
+        run: scripts/compose_up_retry.sh
+
+      - name: Compose ps
+        run: docker compose --env-file .env.example ps
+
+      - name: Full smoke (runtime path)
+        env:
+          SKIP_BUILD: "1"
+          EXPECT_STORAGE_MODE: "blob"
+        run: scripts/compose_smoke.sh
+
+      - name: Collect compose logs
+        if: always()
+        run: scripts/collect_compose_logs.sh /tmp/compose-logs-enrichment
+
+      - name: Upload compose logs artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compose-logs-enrichment
+          path: /tmp/compose-logs-enrichment
+          retention-days: 7
+
+      - name: Compose down
+        if: always()
+        run: docker compose --env-file .env.example down -v --remove-orphans

@@ -1,5 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const http = require('node:http');
 const { createApp } = require('../server');
 
 async function withServer(fn, appOptions = {}) {
@@ -33,6 +34,87 @@ async function waitJob(base, jobId) {
     await new Promise((r) => setTimeout(r, 10));
   }
   throw new Error('job wait timeout');
+}
+
+async function withMockREngine(fn) {
+  const server = http.createServer(async (req, res) => {
+    if (req.method === 'POST' && req.url === '/run/de-enrich') {
+      const chunks = [];
+      for await (const chunk of req) chunks.push(chunk);
+      const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+
+      const response = {
+        ok: true,
+        meta: {
+          service: 'mock-r-engine',
+          mode: body.mode || null,
+          timestamp: new Date().toISOString(),
+        },
+        result: {
+          de: {
+            summary: {
+              totalGenes: 20,
+              significantGenes: 3,
+              thresholds: {
+                log2fc: 0.58,
+                padj: 0.05,
+              },
+            },
+            topTable: [
+              { gene: 'IL6', logFC: 1.2, pvalue: 0.0001, adjPValue: 0.001 },
+              { gene: 'TNF', logFC: 1.1, pvalue: 0.0002, adjPValue: 0.002 },
+              { gene: 'STAT3', logFC: 0.9, pvalue: 0.001, adjPValue: 0.01 },
+            ],
+          },
+          significantGenes: ['IL6', 'TNF', 'STAT3'],
+          enrichment: {
+            go: [
+              {
+                db: 'GO',
+                id: 'GO:0006954',
+                description: 'inflammatory response',
+                geneRatio: '3/3',
+                bgRatio: '5/20000',
+                pvalue: 0.0001,
+                qvalue: 0.0002,
+                genes: ['IL6', 'TNF', 'STAT3'],
+              },
+            ],
+            kegg: [
+              {
+                db: 'KEGG',
+                id: 'hsa04060',
+                description: 'Cytokine-cytokine receptor interaction',
+                geneRatio: '2/3',
+                bgRatio: '10/20000',
+                pvalue: 0.001,
+                qvalue: 0.002,
+                genes: ['IL6', 'TNF'],
+              },
+            ],
+          },
+        },
+      };
+
+      res.statusCode = 200;
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify(response));
+      return;
+    }
+
+    res.statusCode = 404;
+    res.end(JSON.stringify({ ok: false, error: 'not found' }));
+  });
+
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  const base = `http://127.0.0.1:${address.port}`;
+
+  try {
+    await fn(base);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
 }
 
 test('POST /api/run/de-enrich and GET /api/job/:id works in api service', async () => {
@@ -77,6 +159,52 @@ test('POST /api/run/de-enrich and GET /api/job/:id works in api service', async 
       delete process.env.R_ENGINE_URL;
     } else {
       process.env.R_ENGINE_URL = prev;
+    }
+  }
+});
+
+test('POST /api/run/de-enrich uses remote r-engine when available', async () => {
+  const prev = process.env.R_ENGINE_URL;
+  const prevLocalDisable = process.env.R_ENGINE_LOCAL_DISABLE;
+
+  try {
+    await withMockREngine(async (rEngineBase) => {
+      process.env.R_ENGINE_URL = rEngineBase;
+      process.env.R_ENGINE_LOCAL_DISABLE = '1';
+
+      await withServer(async (base) => {
+        const runRes = await fetch(`${base}/api/run/de-enrich`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ engine: 'limma' }),
+        });
+
+        assert.equal(runRes.status, 202);
+        const runBody = await runRes.json();
+        const job = await waitJob(base, runBody.jobId);
+
+        assert.equal(job.status, 'succeeded');
+        assert.equal(job.result.module, 'de-enrich');
+        assert.equal(job.result.engine, 'limma');
+        assert.equal(job.result.runtime.backend, 'R');
+        assert.equal(job.result.runtime.deEngine, 'limma');
+        assert.equal(job.result.runtime.enrichmentEngine, 'clusterProfiler');
+        assert.equal(job.result.enrichment.go[0].id, 'GO:0006954');
+        assert.equal(job.result.enrichment.kegg[0].id, 'hsa04060');
+        assert.ok(job.logs.some((x) => x.message.includes('Remote r-engine completed')));
+        assert.equal(job.logs.some((x) => x.message.includes('fallback')), false);
+      });
+    });
+  } finally {
+    if (prev === undefined) {
+      delete process.env.R_ENGINE_URL;
+    } else {
+      process.env.R_ENGINE_URL = prev;
+    }
+    if (prevLocalDisable === undefined) {
+      delete process.env.R_ENGINE_LOCAL_DISABLE;
+    } else {
+      process.env.R_ENGINE_LOCAL_DISABLE = prevLocalDisable;
     }
   }
 });
@@ -181,12 +309,19 @@ test('POST /api/job/:id/cancel cancels running in-memory jobs', async () => {
       assert.equal(job.error.code, 'JOB_CANCELED');
       assert.equal(job.canceledBy, 'qa-user');
       assert.equal(typeof job.canceledAt, 'string');
+      assert.equal(job.logs.some((x) => x.message.includes('slow task finished')), false);
+      assert.ok(job.logs.some((x) => x.message.includes('Cancellation requested while running')));
     },
     {
       moduleRunners: {
-        slow: async (_payload, appendLog) => {
+        slow: async (_payload, appendLog, context) => {
           appendLog('info', 'slow task started');
-          await new Promise((resolve) => setTimeout(resolve, 120));
+          for (let i = 0; i < 80; i += 1) {
+            if (context && typeof context.throwIfCanceled === 'function') {
+              context.throwIfCanceled();
+            }
+            await new Promise((resolve) => setTimeout(resolve, 8));
+          }
           appendLog('info', 'slow task finished');
           return { ok: true };
         },

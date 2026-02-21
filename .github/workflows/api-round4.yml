@@ -1,0 +1,56 @@
+name: api-round4
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "api/**"
+      - ".github/workflows/api-round4.yml"
+      - "docs/DEVLOG.md"
+      - "README.md"
+  push:
+    branches:
+      - main
+    paths:
+      - "api/**"
+      - ".github/workflows/api-round4.yml"
+      - "docs/DEVLOG.md"
+      - "README.md"
+
+jobs:
+  api-round4-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+
+      - name: Install api dependencies
+        working-directory: api
+        run: npm ci
+
+      - name: Run api tests
+        working-directory: api
+        run: npm test
+
+      - name: Run round4 e2e gate with mock r-engine
+        working-directory: api
+        run: |
+          mkdir -p /tmp/api-round4-logs
+          LOG_DIR=/tmp/api-round4-logs npm run ci:round4
+
+      - name: Upload round4 logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-round4-logs
+          path: /tmp/api-round4-logs
+          retention-days: 7

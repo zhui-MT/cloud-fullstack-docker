@@ -5,6 +5,7 @@ class InMemoryJobManager {
     this.jobs = new Map();
     this.queue = [];
     this.processing = false;
+    this.runningControllers = new Map();
     this.moduleRunners = moduleRunners;
     this.jobStore = jobStore;
   }
@@ -93,6 +94,10 @@ class InMemoryJobManager {
       if (!job.canceledBy) {
         job.canceledBy = canceledBy;
       }
+      const controller = this.runningControllers.get(id);
+      if (controller && !controller.signal.aborted) {
+        controller.abort();
+      }
       job.logs.push({
         ts: new Date().toISOString(),
         level: 'warn',
@@ -162,9 +167,22 @@ class InMemoryJobManager {
     appendLog('info', `Job started: ${job.module}`);
     await this._persistJob(job);
 
+    const controller = new AbortController();
+    this.runningControllers.set(job.id, controller);
+    const context = {
+      signal: controller.signal,
+      throwIfCanceled: () => {
+        if (job.cancelRequested || controller.signal.aborted) {
+          throw makeCanceledError();
+        }
+      },
+    };
+
     try {
-      job.result = await runner(job.request || {}, appendLog);
-      if (job.cancelRequested) {
+      context.throwIfCanceled();
+      job.result = await runner(job.request || {}, appendLog, context);
+      context.throwIfCanceled();
+      if (job.cancelRequested || controller.signal.aborted) {
         job.status = 'canceled';
         job.result = null;
         job.canceledAt = new Date().toISOString();
@@ -181,7 +199,7 @@ class InMemoryJobManager {
         appendLog('info', 'Job completed');
       }
     } catch (error) {
-      if (job.cancelRequested) {
+      if (job.cancelRequested || isCanceledError(error)) {
         job.status = 'canceled';
         job.result = null;
         job.canceledAt = new Date().toISOString();
@@ -202,6 +220,7 @@ class InMemoryJobManager {
         appendLog('error', error.message);
       }
     } finally {
+      this.runningControllers.delete(job.id);
       job.finishedAt = new Date().toISOString();
       await this._persistJob(job);
     }
@@ -449,7 +468,14 @@ class BullmqJobManager {
     await appendLog('info', `Job started: ${job.data.module}`);
 
     try {
-      const result = await runner(job.data.request || {}, (level, message) => appendLog(level, message));
+      const result = await runner(
+        job.data.request || {},
+        (level, message) => appendLog(level, message),
+        {
+          signal: null,
+          throwIfCanceled: () => {},
+        }
+      );
       await appendLog('info', 'Job completed');
       await this._persistJob({
         id: String(job.id),
@@ -680,6 +706,17 @@ function parseBullError(failedReason) {
       message: failedReason,
     };
   }
+}
+
+function makeCanceledError(message = 'job canceled during execution') {
+  const err = new Error(message);
+  err.code = 'JOB_CANCELED';
+  return err;
+}
+
+function isCanceledError(error) {
+  if (!error) return false;
+  return error.code === 'JOB_CANCELED' || error.name === 'AbortError';
 }
 
 function isRedisConnectionError(error) {

@@ -43,9 +43,10 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Compose smoke (config + build)
+      - name: Compose smoke (config only)
         env:
           SKIP_API: "1"
+          SKIP_BUILD: "1"
           DOCKER_BUILDKIT: "1"
           COMPOSE_DOCKER_CLI_BUILD: "1"
         run: scripts/compose_smoke.sh
