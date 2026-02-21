@@ -1,0 +1,3 @@
+Protein IDs	Majority protein IDs	Gene names	LFQ intensity S1	LFQ intensity S2
+P12345;P67890	P12345	TP53	230000	240000
+Q9Y261	Q9Y261	FOXO1	150000	148000

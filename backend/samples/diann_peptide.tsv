@@ -1,0 +1,3 @@
+Precursor.Id	Stripped.Sequence	Modified.Sequence	Protein.Group	Protein.Ids	Genes	Sample_A	Sample_B
+AAAAK2	AAAAK	AAAAK	PG1	P12345	TP53	12000	13000
+BBBBR3	BBBBR	BBBBR(UniMod:35)	PG2	Q9Y261	FOXO1	9000	8700

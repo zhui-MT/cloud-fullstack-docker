@@ -1,0 +1,160 @@
+:root {
+  color: #0f172a;
+  background: radial-gradient(circle at top left, #e0f2fe 0%, #f8fafc 45%, #ffffff 100%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Avenir Next', 'Segoe UI', sans-serif;
+}
+
+.container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+header h1 {
+  margin: 0;
+  font-size: 2rem;
+}
+
+header p {
+  margin-top: 8px;
+  color: #334155;
+}
+
+.config-panel {
+  margin: 18px 0 24px;
+  padding: 14px;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.8);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.config-panel label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.92rem;
+}
+
+input,
+select,
+button,
+a {
+  font: inherit;
+}
+
+.config-panel input,
+.toolbar select {
+  border: 1px solid #94a3b8;
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+button {
+  border: none;
+  background: #0ea5e9;
+  color: #fff;
+  border-radius: 6px;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.meta {
+  color: #475569;
+  font-size: 0.9rem;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(560px, 1fr));
+  gap: 16px;
+}
+
+.card {
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  background: #fff;
+  padding: 14px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+}
+
+.card h2 {
+  margin: 0;
+}
+
+.toolbar {
+  margin: 10px 0;
+}
+
+.toolbar label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #1e293b;
+}
+
+.toolbar input[type='range'] {
+  width: 180px;
+}
+
+.chart {
+  width: 100%;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.axis-label {
+  font-size: 10px;
+  fill: #334155;
+}
+
+.downloads {
+  display: flex;
+  gap: 10px;
+  margin: 8px 0 10px;
+}
+
+.downloads a,
+.downloads button {
+  text-decoration: none;
+  border: 1px solid #0284c7;
+  color: #0369a1;
+  background: #f0f9ff;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+}
+
+.downloads button {
+  cursor: pointer;
+}
+
+.error {
+  color: #b91c1c;
+}
+
+@media (max-width: 700px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .config-panel {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
