@@ -15,10 +15,17 @@ STRICT_MODE="${STRICT_MODE:-0}"
 SAVE_HISTORY="${SAVE_HISTORY:-1}"
 HISTORY_DIR="${HISTORY_DIR:-docs/progress_history}"
 HISTORY_RETENTION_DAYS="${HISTORY_RETENTION_DAYS:-14}"
+HISTORY_RETENTION_COUNT="${HISTORY_RETENTION_COUNT:-200}"
 TREND_OUTPUT_FILE="${TREND_OUTPUT_FILE:-docs/PROGRESS_TREND.md}"
 TREND_WINDOW="${TREND_WINDOW:-20}"
 BLOCKER_TOP_N="${BLOCKER_TOP_N:-5}"
 METRICS_OUTPUT_FILE="${METRICS_OUTPUT_FILE:-docs/PROGRESS_METRICS.prom}"
+if [[ "$METRICS_OUTPUT_FILE" == *.* ]]; then
+  default_metrics_json_output="${METRICS_OUTPUT_FILE%.*}.json"
+else
+  default_metrics_json_output="${METRICS_OUTPUT_FILE}.json"
+fi
+METRICS_JSON_FILE="${METRICS_JSON_FILE:-$default_metrics_json_output}"
 if [[ "$OUTPUT_FILE" == *.* ]]; then
   default_json_output="${OUTPUT_FILE%.*}.json"
 else
@@ -51,6 +58,8 @@ trend_dir="$(dirname "$TREND_OUTPUT_FILE")"
 mkdir -p "$trend_dir"
 metrics_dir="$(dirname "$METRICS_OUTPUT_FILE")"
 mkdir -p "$metrics_dir"
+metrics_json_dir="$(dirname "$METRICS_JSON_FILE")"
+mkdir -p "$metrics_json_dir"
 if [[ "$SAVE_HISTORY" == "1" ]]; then
   mkdir -p "$HISTORY_DIR"
 fi
@@ -221,8 +230,10 @@ fi
   echo "- Strict mode: ${STRICT_MODE}"
   echo "- Save history: ${SAVE_HISTORY}"
   echo "- History retention days: ${HISTORY_RETENTION_DAYS}"
+  echo "- History retention count: ${HISTORY_RETENTION_COUNT}"
   echo "- Trend output: ${TREND_OUTPUT_FILE}"
   echo "- Metrics output: ${METRICS_OUTPUT_FILE}"
+  echo "- Metrics json output: ${METRICS_JSON_FILE}"
   echo
   echo "## Repo Baseline"
   echo "- Branch: \`${branch}\`"
@@ -327,10 +338,12 @@ STRICT_MODE_VALUE="$STRICT_MODE" \
 SAVE_HISTORY_VALUE="$SAVE_HISTORY" \
 HISTORY_DIR_VALUE="$HISTORY_DIR" \
 HISTORY_RETENTION_DAYS_VALUE="$HISTORY_RETENTION_DAYS" \
+HISTORY_RETENTION_COUNT_VALUE="$HISTORY_RETENTION_COUNT" \
 TREND_OUTPUT_FILE_VALUE="$TREND_OUTPUT_FILE" \
 TREND_WINDOW_VALUE="$TREND_WINDOW" \
 BLOCKER_TOP_N_VALUE="$BLOCKER_TOP_N" \
 METRICS_OUTPUT_FILE_VALUE="$METRICS_OUTPUT_FILE" \
+METRICS_JSON_FILE_VALUE="$METRICS_JSON_FILE" \
 node - <<'NODE' >"$JSON_OUTPUT_FILE"
 const fs = require('fs');
 
@@ -368,10 +381,12 @@ const now = {
     save_history: process.env.SAVE_HISTORY_VALUE === '1',
     history_dir: process.env.HISTORY_DIR_VALUE,
     history_retention_days: toInt(process.env.HISTORY_RETENTION_DAYS_VALUE),
+    history_retention_count: toInt(process.env.HISTORY_RETENTION_COUNT_VALUE),
     trend_output_file: process.env.TREND_OUTPUT_FILE_VALUE,
     trend_window: toInt(process.env.TREND_WINDOW_VALUE),
     blocker_top_n: toInt(process.env.BLOCKER_TOP_N_VALUE),
     metrics_output_file: process.env.METRICS_OUTPUT_FILE_VALUE,
+    metrics_json_file: process.env.METRICS_JSON_FILE_VALUE,
   },
   repo: {
     branch: process.env.BRANCH,
@@ -467,17 +482,42 @@ if [[ "$SAVE_HISTORY" == "1" ]]; then
   cp "$JSON_OUTPUT_FILE" "${HISTORY_DIR}/latest.json"
   cp "$OUTPUT_FILE" "${HISTORY_DIR}/latest.md"
 
+  before_count="$(find "$HISTORY_DIR" -maxdepth 1 -type f \( -name '*.json' -o -name '*.md' \) ! -name 'latest.json' ! -name 'latest.md' | wc -l | tr -d ' ')"
+
   retention_days="$HISTORY_RETENTION_DAYS"
   if ! [[ "$retention_days" =~ ^[0-9]+$ ]]; then
     retention_days=14
   fi
   if [[ "$retention_days" -gt 0 ]]; then
-    before_count="$(find "$HISTORY_DIR" -maxdepth 1 -type f \( -name '*.json' -o -name '*.md' \) ! -name 'latest.json' ! -name 'latest.md' | wc -l | tr -d ' ')"
     find "$HISTORY_DIR" -maxdepth 1 -type f \( -name '*.json' -o -name '*.md' \) ! -name 'latest.json' ! -name 'latest.md' -mtime "+$((retention_days-1))" -delete
-    after_count="$(find "$HISTORY_DIR" -maxdepth 1 -type f \( -name '*.json' -o -name '*.md' \) ! -name 'latest.json' ! -name 'latest.md' | wc -l | tr -d ' ')"
-    if [[ "$before_count" =~ ^[0-9]+$ && "$after_count" =~ ^[0-9]+$ && "$before_count" -ge "$after_count" ]]; then
-      history_pruned_count=$((before_count-after_count))
+  fi
+
+  retention_count="$HISTORY_RETENTION_COUNT"
+  if ! [[ "$retention_count" =~ ^[0-9]+$ ]]; then
+    retention_count=200
+  fi
+  if [[ "$retention_count" -gt 0 ]]; then
+    history_json_files=()
+    while IFS= read -r file; do
+      history_json_files+=("$file")
+    done < <(find "$HISTORY_DIR" -maxdepth 1 -type f -name '*.json' ! -name 'latest.json' | sort)
+
+    total_json="${#history_json_files[@]}"
+    if [[ "$total_json" -gt "$retention_count" ]]; then
+      prune_json_count=$((total_json-retention_count))
+      i=0
+      while [[ "$i" -lt "$prune_json_count" ]]; do
+        old_json="${history_json_files[$i]}"
+        old_md="${old_json%.json}.md"
+        rm -f "$old_json" "$old_md"
+        i=$((i+1))
+      done
     fi
+  fi
+
+  after_count="$(find "$HISTORY_DIR" -maxdepth 1 -type f \( -name '*.json' -o -name '*.md' \) ! -name 'latest.json' ! -name 'latest.md' | wc -l | tr -d ' ')"
+  if [[ "$before_count" =~ ^[0-9]+$ && "$after_count" =~ ^[0-9]+$ && "$before_count" -ge "$after_count" ]]; then
+    history_pruned_count=$((before_count-after_count))
   fi
 fi
 
@@ -707,6 +747,93 @@ progress_history_snapshots_total $history_snapshot_count
 progress_history_pruned_count $history_pruned_count
 EOF
 
+TIMESTAMP_LOCAL="$timestamp_local" \
+TIMESTAMP_UTC="$timestamp_utc" \
+OVERALL_STATUS="$overall_status" \
+OVERALL_STATUS_NUM="$overall_status_num" \
+API_TEST_STATUS="$api_test_status" \
+API_TEST_STATUS_NUM="$api_status_num" \
+BACKEND_TEST_STATUS="$backend_test_status" \
+BACKEND_TEST_STATUS_NUM="$backend_status_num" \
+REVIEW_GATE_STATUS="$review_gate_status" \
+REVIEW_GATE_STATUS_NUM="$gate_status_num" \
+SMOKE_STATUS="$smoke_status" \
+SMOKE_STATUS_NUM="$smoke_status_num" \
+DOCKER_STATUS="$docker_status" \
+DOCKER_STATUS_NUM="$docker_status_num" \
+TOTAL_CHANGES="$total_changes" \
+STAGED_CHANGES="$staged_changes" \
+UNSTAGED_CHANGES="$unstaged_changes" \
+UNTRACKED_CHANGES="$untracked_changes" \
+BLOCKERS_TOTAL="$blockers_total" \
+BLOCKERS_ACTIVE="$blockers_active" \
+API_TEST_DURATION_NUM="$api_duration_num" \
+BACKEND_TEST_DURATION_NUM="$backend_duration_num" \
+RUNNING_SERVICES_COUNT="$running_services_count" \
+HISTORY_SNAPSHOTS_TOTAL="$history_snapshot_count" \
+HISTORY_PRUNED_COUNT="$history_pruned_count" \
+METRICS_JSON_OUTPUT="$METRICS_JSON_FILE" \
+node - <<'NODE'
+const fs = require('fs');
+
+function toNum(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+const payload = {
+  generated_at_local: process.env.TIMESTAMP_LOCAL,
+  generated_at_utc: process.env.TIMESTAMP_UTC,
+  overall_status: {
+    text: process.env.OVERALL_STATUS,
+    code: toNum(process.env.OVERALL_STATUS_NUM),
+  },
+  working_tree: {
+    total_changed_files: toNum(process.env.TOTAL_CHANGES),
+    staged_changes: toNum(process.env.STAGED_CHANGES),
+    unstaged_changes: toNum(process.env.UNSTAGED_CHANGES),
+    untracked_files: toNum(process.env.UNTRACKED_CHANGES),
+  },
+  blockers: {
+    total: toNum(process.env.BLOCKERS_TOTAL),
+    active: toNum(process.env.BLOCKERS_ACTIVE),
+  },
+  validation: {
+    api_tests: {
+      status: process.env.API_TEST_STATUS,
+      code: toNum(process.env.API_TEST_STATUS_NUM),
+      duration_ms: toNum(process.env.API_TEST_DURATION_NUM),
+    },
+    backend_tests: {
+      status: process.env.BACKEND_TEST_STATUS,
+      code: toNum(process.env.BACKEND_TEST_STATUS_NUM),
+      duration_ms: toNum(process.env.BACKEND_TEST_DURATION_NUM),
+    },
+    review_gate: {
+      status: process.env.REVIEW_GATE_STATUS,
+      code: toNum(process.env.REVIEW_GATE_STATUS_NUM),
+    },
+    compose_smoke: {
+      status: process.env.SMOKE_STATUS,
+      code: toNum(process.env.SMOKE_STATUS_NUM),
+    },
+  },
+  runtime: {
+    docker_daemon: {
+      status: process.env.DOCKER_STATUS,
+      code: toNum(process.env.DOCKER_STATUS_NUM),
+    },
+    running_services_count: toNum(process.env.RUNNING_SERVICES_COUNT),
+  },
+  history: {
+    snapshots_total: toNum(process.env.HISTORY_SNAPSHOTS_TOTAL),
+    pruned_count: toNum(process.env.HISTORY_PRUNED_COUNT),
+  },
+};
+
+fs.writeFileSync(process.env.METRICS_JSON_OUTPUT, `${JSON.stringify(payload, null, 2)}\n`);
+NODE
+
 {
   echo
   echo "## Monitor Outputs"
@@ -714,6 +841,7 @@ EOF
   echo "- Status json: ${JSON_OUTPUT_FILE}"
   echo "- Trend markdown: ${TREND_OUTPUT_FILE}"
   echo "- Metrics output: ${METRICS_OUTPUT_FILE}"
+  echo "- Metrics json output: ${METRICS_JSON_FILE}"
   echo "- History snapshot markdown: ${history_md_path}"
   echo "- History snapshot json: ${history_json_path}"
   echo "- History files pruned this run: ${history_pruned_count}"
@@ -732,6 +860,7 @@ echo "Progress snapshot generated: $OUTPUT_FILE"
 echo "Progress JSON generated: $JSON_OUTPUT_FILE"
 echo "Progress trend generated: $TREND_OUTPUT_FILE"
 echo "Progress metrics generated: $METRICS_OUTPUT_FILE"
+echo "Progress metrics json generated: $METRICS_JSON_FILE"
 if [[ "$SAVE_HISTORY" == "1" ]]; then
   echo "Progress history snapshot saved: $history_json_path"
 fi

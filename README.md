@@ -194,14 +194,15 @@ CI（GitHub Actions）：
   - 通过 `scripts/compose_up_retry.sh` 对 `compose up -d --build` 做重试
   - `SKIP_BUILD=1 scripts/compose_smoke.sh`（运行态 API 全链路）
   - 通过 `scripts/collect_compose_logs.sh` 采集并上传 `compose-logs` artifact（`ps/logs/images/config/events`）
-  - 日志过大时自动裁剪（默认 `5MB` 上限，保留尾部 `256KB`，可用 `COMPOSE_LOG_MAX_FILE_BYTES/COMPOSE_LOG_TAIL_BYTES` 调整）
+  - 日志过大时自动裁剪（`services/events` 可分别配置阈值），并在 `manifest.txt` 记录大小与 SHA256
+  - job summary 自动附带 `manifest` 摘要，便于直接在 Actions 页面定位
   - 手动触发可选 `install_enrichment=1`，启用 `clusterProfiler/org.Hs.eg.db` 构建
 - Workflow: `.github/workflows/full-smoke-enrichment-weekly.yml`
 - 执行内容：
   - 每周 `04:00 UTC`（周日）执行 enrichment 栈 full-smoke（固定 `R_ENGINE_INSTALL_ENRICHMENT_PACKAGES=1`）
   - 前置执行 `cd backend && npm ci && npm test`（避免明显回归后再启动全栈）
   - 同样使用 `compose_up_retry` + `collect_compose_logs`，artifact 名称为 `compose-logs-enrichment`
-  - 与 nightly 一样启用 workflow `concurrency`，避免同类任务并发抢占
+  - 与 nightly 一样启用 workflow `concurrency` + job summary，避免并发抢占并提升可读性
 - Workflow: `.github/workflows/api-round4.yml`
 - 执行内容：
   - `cd api && npm ci && npm test`
@@ -278,6 +279,7 @@ scripts/vc_rollback.sh baseline-v1
 - `docs/PROGRESS_STATUS.json`
 - `docs/PROGRESS_TREND.md`
 - `docs/PROGRESS_METRICS.prom`
+- `docs/PROGRESS_METRICS.json`
 
 可通过环境变量控制执行项：
 
@@ -303,8 +305,14 @@ SAVE_HISTORY=1 HISTORY_DIR=docs/progress_history TREND_OUTPUT_FILE=docs/PROGRESS
 # 历史保留 14 天，并设置 blocker 热点 TopN
 HISTORY_RETENTION_DAYS=14 BLOCKER_TOP_N=10 scripts/progress_monitor.sh
 
+# 历史最多保留 200 个快照（按时间戳滚动）
+HISTORY_RETENTION_COUNT=200 scripts/progress_monitor.sh
+
 # 指定 Prometheus 指标输出文件
 METRICS_OUTPUT_FILE=docs/PROGRESS_METRICS.prom scripts/progress_monitor.sh
+
+# 指定 JSON 指标输出文件
+METRICS_JSON_FILE=docs/PROGRESS_METRICS.json scripts/progress_monitor.sh
 ```
 
 CI 定时快照：`.github/workflows/progress-monitor.yml`（支持 `workflow_dispatch` 与 nightly cron）。

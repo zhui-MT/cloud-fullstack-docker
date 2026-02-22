@@ -1886,6 +1886,73 @@ Response (`200`, 节选):
 2. 按文件类型细化裁剪阈值（例如 `events.jsonl` 单独更大阈值）。
 3. 在 weekly workflow 增加 `concurrency` 与 schedule 说明到 `docs/REVIEW_PROTOCOL.md`。
 
+## Round 22
+
+### Goal
+完成日志产物可追溯增强：为 `manifest` 增加 SHA256，支持 `services/events` 分文件阈值，并在 nightly/weekly workflow 输出可读 summary。
+
+### Implemented
+- 更新 `scripts/collect_compose_logs.sh`
+  - 新增分文件阈值参数：
+    - `COMPOSE_LOG_MAX_SERVICES_BYTES`
+    - `COMPOSE_LOG_MAX_EVENTS_BYTES`
+    - `COMPOSE_LOG_TAIL_SERVICES_BYTES`
+    - `COMPOSE_LOG_TAIL_EVENTS_BYTES`
+  - `manifest.txt` 增强：
+    - 记录裁剪配置
+    - 记录 `ps/services/images/config/events` 的 `bytes + sha256`
+  - 增加 `sha256sum/shasum` 兼容逻辑（跨 Linux/macOS）
+- 更新 workflow：
+  - `.github/workflows/full-smoke-nightly.yml`
+    - `Collect compose logs` 步骤传入分文件阈值（events 更高上限）
+    - 新增 `Publish smoke summary`，把 `manifest` 摘要写入 `GITHUB_STEP_SUMMARY`
+  - `.github/workflows/full-smoke-enrichment-weekly.yml`
+    - 同步分文件阈值
+    - 新增 `Publish smoke summary`
+- 更新 `.env.example`
+  - 补齐日志裁剪相关默认参数，便于 CI/本地直接覆盖。
+- 更新 `README.md`
+  - CI 章节补充：分文件裁剪、`manifest` 的 SHA256、workflow summary 可见性。
+
+### Changed Files
+- `cloud-fullstack-docker/scripts/collect_compose_logs.sh`
+- `cloud-fullstack-docker/.github/workflows/full-smoke-nightly.yml`
+- `cloud-fullstack-docker/.github/workflows/full-smoke-enrichment-weekly.yml`
+- `cloud-fullstack-docker/.env.example`
+- `cloud-fullstack-docker/README.md`
+- `cloud-fullstack-docker/docs/DEVLOG.md`
+
+### Validation
+执行时间：2026-02-22
+
+1) 脚本语法
+- 命令：`bash -n scripts/collect_compose_logs.sh scripts/compose_up_retry.sh`
+- 结果：通过
+
+2) 分文件裁剪 + SHA256 验证
+- 命令：`COMPOSE_LOG_MAX_SERVICES_BYTES=200 COMPOSE_LOG_TAIL_SERVICES_BYTES=80 COMPOSE_LOG_MAX_EVENTS_BYTES=400 COMPOSE_LOG_TAIL_EVENTS_BYTES=120 scripts/collect_compose_logs.sh /tmp/compose-logs-trimtest4`
+- 结果：
+  - `services.log/events.jsonl` 按各自阈值裁剪
+  - `manifest.txt` 包含每个文件的 `bytes + sha256`
+
+3) compose 配置与运行态 smoke
+- 命令：`docker compose --env-file .env.example config`
+- 结果：通过
+- 命令：`SKIP_BUILD=1 scripts/compose_smoke.sh`
+- 结果：PASS
+
+4) 后端回归
+- 命令：`cd backend && npm test`
+- 结果：`33 passed, 0 failed`
+
+### Risks / Open Questions
+- 当前裁剪策略仍是“字节尾部”保留，结构化日志（JSONL）可能出现截断行；如需机器解析严格性，可在后续改为按行裁剪并保留完整 JSON 边界。
+
+### Next Round Options
+1. 在 `manifest.txt` 中追加 `truncated=true/false` 标记，便于自动化判读。
+2. 将 weekly/nightly 的裁剪参数抽到共享 env 配置块，减少 workflow 重复。
+3. 在 `docs/REVIEW_PROTOCOL.md` 增补并发/summary 检查项。
+
 ## Round 4 (API Refresh)
 
 ### Goal
@@ -2362,3 +2429,57 @@ Response (`200`, 节选):
 1. 增加 `HISTORY_RETENTION_COUNT`（按数量保留）与按天策略并行。
 2. 输出 `progress_metrics.json`，便于非 Prometheus 消费方接入。
 3. 在趋势报告中加入“测试耗时变化率”告警阈值。
+
+## Progress Monitor v5
+
+### Goal
+补齐 history 保留上限与 JSON 指标产物，避免历史目录无限增长并提升外部系统接入能力。
+
+### Implemented
+- 升级 `scripts/progress_monitor.sh`：
+  - 新增 `HISTORY_RETENTION_COUNT`（默认 200），按时间戳滚动保留最新 N 份历史快照
+  - 历史清理改为“按天 + 按数量”双策略叠加，统一产出 `history_pruned_count`
+  - 新增 `METRICS_JSON_FILE`（默认 `docs/PROGRESS_METRICS.json`）
+  - 继续输出 `docs/PROGRESS_METRICS.prom`，并同步生成结构化 JSON 指标
+  - 修复 Bash 3.2 下空数组 cleanup 的 `set -u` 兼容性问题
+- 升级 `.github/workflows/progress-monitor.yml`：
+  - 新增 `HISTORY_RETENTION_COUNT=200`
+  - 上传 `docs/PROGRESS_METRICS.json` artifact
+- 更新文档：
+  - `README.md` 增加 metrics JSON 和数量保留示例
+  - `docs/VERSION_CONTROL.md` 增加产物/参数说明
+
+### Changed Files
+- `cloud-fullstack-docker/scripts/progress_monitor.sh`
+- `cloud-fullstack-docker/.github/workflows/progress-monitor.yml`
+- `cloud-fullstack-docker/README.md`
+- `cloud-fullstack-docker/docs/VERSION_CONTROL.md`
+- `cloud-fullstack-docker/docs/DEVLOG.md`
+
+### Validation
+执行时间：2026-02-22
+
+1) 语法检查
+- 命令：`bash -n scripts/progress_monitor.sh`
+- 结果：通过
+
+2) 临时目录专项验证（双保留策略 + 指标）
+- 命令（节选）：
+  - 预置旧快照：`old.json/old.md`（2000-01-01 mtime）
+  - 运行：`RUN_TESTS=0 RUN_GATE=0 RUN_SMOKE=0 SAVE_HISTORY=1 HISTORY_RETENTION_DAYS=1 scripts/progress_monitor.sh ...`
+- 结果：
+  - 旧快照被清理，目录仅保留新快照与 latest
+  - `METRICS.prom` 中 `progress_history_pruned_count=2`
+  - 趋势报告包含 `## Blocker Hotspots`
+
+3) 严格模式回归
+- 命令：`STRICT_MODE=1 RUN_SMOKE=0 scripts/progress_monitor.sh`
+- 结果：若 `review_gate` 命中阻塞，脚本按预期返回非 0；门禁行为符合设计
+
+### Risks / Open Questions
+- 当前 count 保留按本地文件名时间戳排序，若历史目录混入非标准命名文件，可能影响滚动顺序。
+
+### Next Round Options
+1. 增加 `HISTORY_FILE_PATTERN` 仅匹配规范快照文件名。
+2. 增加 JSON 指标到 CI summary 的摘要渲染。
+3. 增加阻塞项严重度分级（quality/runtime/governance）。
