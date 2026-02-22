@@ -29,10 +29,12 @@ PREV_JSON_FILE="${PREV_JSON_FILE:-$JSON_OUTPUT_FILE}"
 
 declare -a TMP_FILES=()
 cleanup() {
+  set +u
   local f
   for f in "${TMP_FILES[@]}"; do
     rm -f "$f"
   done
+  set -u
 }
 trap cleanup EXIT
 

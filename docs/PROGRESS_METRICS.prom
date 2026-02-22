@@ -1,0 +1,54 @@
+# HELP progress_overall_status_status Labeled overall progress status.
+# TYPE progress_overall_status_status gauge
+progress_overall_status_status{status="CODE_HEALTHY"} 1
+# HELP progress_overall_status_code Numeric overall status: 1 healthy, 0 blocked, -1 in-progress/unknown.
+# TYPE progress_overall_status_code gauge
+progress_overall_status_code 1
+# HELP progress_total_changed_files Total changed files in working tree.
+# TYPE progress_total_changed_files gauge
+progress_total_changed_files 19
+# HELP progress_staged_changes Staged changes count.
+# TYPE progress_staged_changes gauge
+progress_staged_changes 0
+# HELP progress_unstaged_changes Unstaged changes count.
+# TYPE progress_unstaged_changes gauge
+progress_unstaged_changes 15
+# HELP progress_untracked_files Untracked files count.
+# TYPE progress_untracked_files gauge
+progress_untracked_files 4
+# HELP progress_blockers_total Blockers count in current snapshot.
+# TYPE progress_blockers_total gauge
+progress_blockers_total 0
+# HELP progress_blockers_active Whether blockers exist (1=true, 0=false).
+# TYPE progress_blockers_active gauge
+progress_blockers_active 0
+# HELP progress_api_tests_status Numeric api test status.
+# TYPE progress_api_tests_status gauge
+progress_api_tests_status 1
+# HELP progress_backend_tests_status Numeric backend test status.
+# TYPE progress_backend_tests_status gauge
+progress_backend_tests_status 1
+# HELP progress_review_gate_status Numeric review gate status.
+# TYPE progress_review_gate_status gauge
+progress_review_gate_status 1
+# HELP progress_compose_smoke_status Numeric compose smoke status.
+# TYPE progress_compose_smoke_status gauge
+progress_compose_smoke_status -1
+# HELP progress_docker_daemon_status Numeric docker daemon availability.
+# TYPE progress_docker_daemon_status gauge
+progress_docker_daemon_status 1
+# HELP progress_api_test_duration_ms API test duration in ms.
+# TYPE progress_api_test_duration_ms gauge
+progress_api_test_duration_ms 35629.963209
+# HELP progress_backend_test_duration_ms Backend test duration in ms.
+# TYPE progress_backend_test_duration_ms gauge
+progress_backend_test_duration_ms 683.347833
+# HELP progress_running_services_count Number of running compose services.
+# TYPE progress_running_services_count gauge
+progress_running_services_count 5
+# HELP progress_history_snapshots_total Number of history json snapshots retained.
+# TYPE progress_history_snapshots_total gauge
+progress_history_snapshots_total 3
+# HELP progress_history_pruned_count Number of history files pruned in this run.
+# TYPE progress_history_pruned_count gauge
+progress_history_pruned_count 0

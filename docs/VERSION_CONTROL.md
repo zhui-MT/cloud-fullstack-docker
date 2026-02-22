@@ -11,10 +11,11 @@
    - `git status -sb`
 2. 生成进度快照
    - `scripts/progress_monitor.sh`
-   - 产物：`docs/PROGRESS_STATUS.md` + `docs/PROGRESS_STATUS.json`
+   - 产物：`docs/PROGRESS_STATUS.md` + `docs/PROGRESS_STATUS.json` + `docs/PROGRESS_TREND.md` + `docs/PROGRESS_METRICS.prom`
    - 如需和历史快照比较：`PREV_JSON_FILE=<old.json> scripts/progress_monitor.sh`
    - 严格门禁：`STRICT_MODE=1 scripts/progress_monitor.sh`（有 blocker 时返回非 0）
    - 趋势报告：`docs/PROGRESS_TREND.md`（来自 `docs/progress_history/*.json`）
+   - 历史保留：`HISTORY_RETENTION_DAYS=14 scripts/progress_monitor.sh`
 3. 执行审查门禁
    - `scripts/review_gate.sh round-name`
 4. 运行集成烟测（容器启动后）
