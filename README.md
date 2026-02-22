@@ -79,6 +79,25 @@ export R_ENGINE_INSTALL_ENRICHMENT_PACKAGES=1
 docker compose up -d --build r-engine
 ```
 
+### 3.1 First Trial Run (Recommended)
+
+首次试运行建议先走最小闭环，优先验证服务健康 + API 链路：
+
+```bash
+cd /Users/zhui/Desktop/cs/cloud-fullstack-docker
+
+# 1) 首次拉起（需要构建）
+docker compose up -d --build
+
+# 2) 检查六服务健康
+docker compose --env-file .env.example ps
+
+# 3) 运行态链路烟测（避免重复 build）
+SKIP_BUILD=1 scripts/compose_smoke.sh
+```
+
+若第 3 步 `PASS`，即可进入下一轮功能开发（上传解析 -> 预处理 -> 差异分析 -> 绘图下载）。
+
 ## 4. Key APIs (Phase 5)
 
 ### 4.1 Analysis

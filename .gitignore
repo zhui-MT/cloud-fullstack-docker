@@ -26,6 +26,10 @@ logs/
 .tmp/
 tmp/
 
+# Local rendered docs (preview exports)
+README.html
+README_files/
+
 # Editors
 .vscode/
 .idea/

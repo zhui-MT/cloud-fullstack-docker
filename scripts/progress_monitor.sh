@@ -20,6 +20,7 @@ TREND_OUTPUT_FILE="${TREND_OUTPUT_FILE:-docs/PROGRESS_TREND.md}"
 TREND_WINDOW="${TREND_WINDOW:-20}"
 BLOCKER_TOP_N="${BLOCKER_TOP_N:-5}"
 METRICS_OUTPUT_FILE="${METRICS_OUTPUT_FILE:-docs/PROGRESS_METRICS.prom}"
+# Keep Prom metrics and JSON metrics side-by-side by default.
 if [[ "$METRICS_OUTPUT_FILE" == *.* ]]; then
   default_metrics_json_output="${METRICS_OUTPUT_FILE%.*}.json"
 else
@@ -488,6 +489,7 @@ if [[ "$SAVE_HISTORY" == "1" ]]; then
   if ! [[ "$retention_days" =~ ^[0-9]+$ ]]; then
     retention_days=14
   fi
+  # Age-based pruning: remove snapshots older than N days first.
   if [[ "$retention_days" -gt 0 ]]; then
     find "$HISTORY_DIR" -maxdepth 1 -type f \( -name '*.json' -o -name '*.md' \) ! -name 'latest.json' ! -name 'latest.md' -mtime "+$((retention_days-1))" -delete
   fi
@@ -496,6 +498,7 @@ if [[ "$SAVE_HISTORY" == "1" ]]; then
   if ! [[ "$retention_count" =~ ^[0-9]+$ ]]; then
     retention_count=200
   fi
+  # Count-based pruning: keep only the newest N json/md snapshot pairs.
   if [[ "$retention_count" -gt 0 ]]; then
     history_json_files=()
     while IFS= read -r file; do
@@ -747,6 +750,7 @@ progress_history_snapshots_total $history_snapshot_count
 progress_history_pruned_count $history_pruned_count
 EOF
 
+# Write a JSON metrics mirror for non-Prometheus consumers (dashboards/tools).
 TIMESTAMP_LOCAL="$timestamp_local" \
 TIMESTAMP_UTC="$timestamp_utc" \
 OVERALL_STATUS="$overall_status" \
@@ -849,6 +853,7 @@ NODE
 
 strict_failed=0
 if [[ "$STRICT_MODE" == "1" ]]; then
+  # Strict mode fails on any blocker, regardless of test/smoke execution plan.
   if [[ "${#blockers[@]}" -gt 0 ]]; then
     strict_failed=1
   elif [[ "$overall_status" == BLOCKED_* ]]; then

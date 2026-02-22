@@ -2445,12 +2445,15 @@ Response (`200`, 节选):
 - 升级 `.github/workflows/progress-monitor.yml`：
   - 新增 `HISTORY_RETENTION_COUNT=200`
   - 上传 `docs/PROGRESS_METRICS.json` artifact
+- 升级 `scripts/review_gate.sh`：
+  - 排除 `README.html` / `README_files/` 导出产物，避免误判“代码变更未更新 DEVLOG”
 - 更新文档：
   - `README.md` 增加 metrics JSON 和数量保留示例
   - `docs/VERSION_CONTROL.md` 增加产物/参数说明
 
 ### Changed Files
 - `cloud-fullstack-docker/scripts/progress_monitor.sh`
+- `cloud-fullstack-docker/scripts/review_gate.sh`
 - `cloud-fullstack-docker/.github/workflows/progress-monitor.yml`
 - `cloud-fullstack-docker/README.md`
 - `cloud-fullstack-docker/docs/VERSION_CONTROL.md`
@@ -2474,7 +2477,15 @@ Response (`200`, 节选):
 
 3) 严格模式回归
 - 命令：`STRICT_MODE=1 RUN_SMOKE=0 scripts/progress_monitor.sh`
-- 结果：若 `review_gate` 命中阻塞，脚本按预期返回非 0；门禁行为符合设计
+- 结果：通过，`overall status=CODE_HEALTHY`
+
+4) review gate 误报修复验证
+- 命令：`scripts/review_gate.sh monitor-readme-artifact-filter`
+- 结果：通过（`README.html` / `README_files/` 不再触发 DEVLOG 阻断）
+
+5) 严格模式 + 运行态 smoke
+- 命令：`STRICT_MODE=1 RUN_SMOKE=1 SMOKE_SKIP_BUILD=1 scripts/progress_monitor.sh`
+- 结果：通过，`review gate=PASS`，`compose smoke=PASS`，`overall status=CODE_HEALTHY`
 
 ### Risks / Open Questions
 - 当前 count 保留按本地文件名时间戳排序，若历史目录混入非标准命名文件，可能影响滚动顺序。
@@ -2483,3 +2494,55 @@ Response (`200`, 节选):
 1. 增加 `HISTORY_FILE_PATTERN` 仅匹配规范快照文件名。
 2. 增加 JSON 指标到 CI summary 的摘要渲染。
 3. 增加阻塞项严重度分级（quality/runtime/governance）。
+
+## Round 23
+
+### Goal
+整理代码库可维护性（仓库噪音与关键脚本注释）并执行第一次运行态试运行。
+
+### Implemented
+- 仓库清理：
+  - `.gitignore` 新增 `README.html` / `README_files/`，避免本地导出文件污染工作区。
+- 门禁脚本注释：
+  - `scripts/review_gate.sh` 增加说明注释，明确哪些路径按“非代码改动”处理。
+- 监控脚本注释：
+  - `scripts/progress_monitor.sh` 增加关键注释，覆盖：
+    - prom/json 指标双产物默认策略
+    - history 按天 + 按数量双重清理逻辑
+    - strict mode 阻断语义
+- 运行文档补充：
+  - `README.md` 新增 `First Trial Run` 小节，给出首次启动与试运行命令序列。
+
+### Changed Files
+- `cloud-fullstack-docker/.gitignore`
+- `cloud-fullstack-docker/scripts/review_gate.sh`
+- `cloud-fullstack-docker/scripts/progress_monitor.sh`
+- `cloud-fullstack-docker/README.md`
+- `cloud-fullstack-docker/docs/DEVLOG.md`
+
+### Validation
+执行时间：2026-02-22
+
+1) 服务拉起
+- 命令：`docker compose --env-file .env.example up -d`
+- 结果：`frontend/api/r-engine/redis/postgres/minio` 全部运行并健康
+
+2) 运行态冒烟
+- 命令：`SKIP_BUILD=1 scripts/compose_smoke.sh`
+- 结果：`PASS: compose smoke checks passed.`
+
+3) 关键接口检查
+- 命令：`curl -fsS http://localhost:4000/api/health`
+- 结果：`{"ok":true,...}`
+- 命令：`curl -fsS http://localhost:8000/health`
+- 结果：`{"ok":[true],"service":["r-engine"]}`
+- 命令：`curl -fsS 'http://localhost:4000/api/analysis?config_rev=rev-0005'`
+- 结果：返回分析 payload（含 `views.pca/correlation/volcano/enrichment`）
+
+### Risks / Open Questions
+- 当前工作区仍会因 `progress_monitor` 运行刷新 `docs/PROGRESS_*` 快照；如需保持干净工作区，建议在开发轮次中按策略提交或单独管理这些产物。
+
+### Next Round Options
+1. 将 `progress_monitor` 增加 `WRITE_REPORTS=0` 开关（仅控制台输出，不落盘）。
+2. 把 `README` 的试运行流程抽成 `scripts/first_run.sh` 一键执行。
+3. 增加“首次试运行基线截图/日志包”标准化产物目录。

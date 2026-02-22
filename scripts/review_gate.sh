@@ -19,7 +19,8 @@ if [ -z "$CHANGED_FILES" ]; then
   WARNINGS+=("no working-tree changes detected")
 fi
 
-CODE_CHANGES="$(printf '%s\n' "$CHANGED_FILES" | grep -Ev '^(docs/|README\.md$|\.env(\.example)?$|\.gitignore$|scripts/)' || true)"
+# Treat docs/env/scripts/rendered README assets as non-code changes for the DEVLOG gate.
+CODE_CHANGES="$(printf '%s\n' "$CHANGED_FILES" | grep -Ev '^(docs/|README\.md$|README\.html$|README_files/|\.env(\.example)?$|\.gitignore$|scripts/)' || true)"
 if [ -n "$CODE_CHANGES" ]; then
   if ! printf '%s\n' "$CHANGED_FILES" | grep -q '^docs/DEVLOG.md$'; then
     ERRORS+=("code changed but docs/DEVLOG.md was not updated")
