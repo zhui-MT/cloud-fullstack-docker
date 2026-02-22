@@ -194,11 +194,14 @@ CI（GitHub Actions）：
   - 通过 `scripts/compose_up_retry.sh` 对 `compose up -d --build` 做重试
   - `SKIP_BUILD=1 scripts/compose_smoke.sh`（运行态 API 全链路）
   - 通过 `scripts/collect_compose_logs.sh` 采集并上传 `compose-logs` artifact（`ps/logs/images/config/events`）
+  - 日志过大时自动裁剪（默认 `5MB` 上限，保留尾部 `256KB`，可用 `COMPOSE_LOG_MAX_FILE_BYTES/COMPOSE_LOG_TAIL_BYTES` 调整）
   - 手动触发可选 `install_enrichment=1`，启用 `clusterProfiler/org.Hs.eg.db` 构建
 - Workflow: `.github/workflows/full-smoke-enrichment-weekly.yml`
 - 执行内容：
   - 每周 `04:00 UTC`（周日）执行 enrichment 栈 full-smoke（固定 `R_ENGINE_INSTALL_ENRICHMENT_PACKAGES=1`）
+  - 前置执行 `cd backend && npm ci && npm test`（避免明显回归后再启动全栈）
   - 同样使用 `compose_up_retry` + `collect_compose_logs`，artifact 名称为 `compose-logs-enrichment`
+  - 与 nightly 一样启用 workflow `concurrency`，避免同类任务并发抢占
 - Workflow: `.github/workflows/api-round4.yml`
 - 执行内容：
   - `cd api && npm ci && npm test`
@@ -211,15 +214,18 @@ CI（GitHub Actions）：
       - `EXPECT_GO_ID=GO:0006954`
       - `EXPECT_KEGG_ID=hsa04060`
       - `EXPECT_LOGS="Running limma + clusterProfiler via R runtime,Remote r-engine completed"`
+      - `EXPECT_LOGS_ORDERED=1`（按日志出现顺序匹配）
+      - `EXPECT_LOGS_ABSENT="fallback,R chain unavailable,Local Rscript runner failed"`（禁止 fallback 路径日志）
 
 ## 7. Phase 5 Acceptance Snapshot
 
 来自 `docs/ROUND5_TEST_SUMMARY.md`（2026-02-21 最新一次）：
 - Regression: **PASS**
-- Analysis API latency (local loopback): `p50=1.37ms`, `p95=2.26ms`, `max=3.42ms`
-- Download API latency (local loopback): `p50=0.23ms`, `p95=0.44ms`, `max=0.75ms`
+- Analysis API latency (local loopback): `p50=2.64ms`, `p95=4.11ms`, `max=7.02ms`
+- Download API latency (local loopback): `p50=0.46ms`, `p95=0.90ms`, `max=1.13ms`
 
 发布门禁执行结果见：`docs/ROUND5_RELEASE_CHECKLIST.md`
+最新门禁状态（2026-02-21）：Deployable **PASS** / Reproducible **PASS** / Rollback-ready **PARTIAL**
 
 ## 8. Release Checklist
 
@@ -270,6 +276,8 @@ scripts/vc_rollback.sh baseline-v1
 默认输出：
 - `docs/PROGRESS_STATUS.md`
 - `docs/PROGRESS_STATUS.json`
+- `docs/PROGRESS_TREND.md`
+- `docs/PROGRESS_METRICS.prom`
 
 可通过环境变量控制执行项：
 
@@ -291,6 +299,12 @@ STRICT_MODE=1 scripts/progress_monitor.sh
 
 # 历史归档与趋势输出
 SAVE_HISTORY=1 HISTORY_DIR=docs/progress_history TREND_OUTPUT_FILE=docs/PROGRESS_TREND.md scripts/progress_monitor.sh
+
+# 历史保留 14 天，并设置 blocker 热点 TopN
+HISTORY_RETENTION_DAYS=14 BLOCKER_TOP_N=10 scripts/progress_monitor.sh
+
+# 指定 Prometheus 指标输出文件
+METRICS_OUTPUT_FILE=docs/PROGRESS_METRICS.prom scripts/progress_monitor.sh
 ```
 
 CI 定时快照：`.github/workflows/progress-monitor.yml`（支持 `workflow_dispatch` 与 nightly cron）。

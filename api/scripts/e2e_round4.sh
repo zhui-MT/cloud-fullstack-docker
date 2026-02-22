@@ -7,6 +7,8 @@ ASSERT_GO_KEGG="${ASSERT_GO_KEGG:-0}"
 EXPECT_GO_ID="${EXPECT_GO_ID:-}"
 EXPECT_KEGG_ID="${EXPECT_KEGG_ID:-}"
 EXPECT_LOGS="${EXPECT_LOGS:-}"
+EXPECT_LOGS_ORDERED="${EXPECT_LOGS_ORDERED:-0}"
+EXPECT_LOGS_ABSENT="${EXPECT_LOGS_ABSENT:-}"
 
 json_field() {
   local json="$1"
@@ -62,6 +64,44 @@ log_contains() {
   '
 }
 
+logs_contains_in_order() {
+  local json="$1"
+  local expected_csv="$2"
+  JSON_INPUT="$json" EXPECTED_LOGS="$expected_csv" node -e '
+    const obj = JSON.parse(process.env.JSON_INPUT || "{}");
+    const expectedRaw = String(process.env.EXPECTED_LOGS || "");
+    const expected = expectedRaw
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean);
+    if (expected.length === 0) process.exit(0);
+    const logs = Array.isArray(obj.logs) ? obj.logs : [];
+    const messages = logs
+      .map((x) => (typeof x?.message === "string" ? x.message : ""))
+      .filter(Boolean);
+    let cursor = 0;
+    for (const message of messages) {
+      if (message.includes(expected[cursor])) {
+        cursor += 1;
+        if (cursor >= expected.length) break;
+      }
+    }
+    process.exit(cursor >= expected.length ? 0 : 1);
+  '
+}
+
+log_absent() {
+  local json="$1"
+  local forbidden="$2"
+  JSON_INPUT="$json" FORBIDDEN_LOG="$forbidden" node -e '
+    const obj = JSON.parse(process.env.JSON_INPUT || "{}");
+    const forbidden = String(process.env.FORBIDDEN_LOG || "");
+    const logs = Array.isArray(obj.logs) ? obj.logs : [];
+    const hit = logs.some((x) => typeof x?.message === "string" && x.message.includes(forbidden));
+    process.exit(hit ? 1 : 0);
+  '
+}
+
 run_resp=$(curl -sS -X POST "$API_URL/api/run/de-enrich" -H 'Content-Type: application/json' -d '{"engine":"limma"}')
 job_id=$(json_field "$run_resp" "jobId" || true)
 
@@ -113,14 +153,37 @@ for i in $(seq 1 30); do
     fi
 
     if [[ -n "$EXPECT_LOGS" ]]; then
-      IFS=',' read -r -a expected_logs <<< "$EXPECT_LOGS"
-      for expected_log in "${expected_logs[@]}"; do
-        expected_log="$(printf "%s" "$expected_log" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
-        if [[ -z "$expected_log" ]]; then
+      if [[ "$EXPECT_LOGS_ORDERED" == "1" ]]; then
+        if ! logs_contains_in_order "$job_resp" "$EXPECT_LOGS"; then
+          echo "Expected ordered log keywords not found in order: '$EXPECT_LOGS'"
+          echo "$job_resp"
+          exit 1
+        fi
+      else
+        IFS=',' read -r -a expected_logs <<< "$EXPECT_LOGS"
+        for expected_log in "${expected_logs[@]}"; do
+          expected_log="$(printf "%s" "$expected_log" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+          if [[ -z "$expected_log" ]]; then
+            continue
+          fi
+          if ! log_contains "$job_resp" "$expected_log"; then
+            echo "Expected log keyword '$expected_log' not found"
+            echo "$job_resp"
+            exit 1
+          fi
+        done
+      fi
+    fi
+
+    if [[ -n "$EXPECT_LOGS_ABSENT" ]]; then
+      IFS=',' read -r -a absent_logs <<< "$EXPECT_LOGS_ABSENT"
+      for absent_log in "${absent_logs[@]}"; do
+        absent_log="$(printf "%s" "$absent_log" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+        if [[ -z "$absent_log" ]]; then
           continue
         fi
-        if ! log_contains "$job_resp" "$expected_log"; then
-          echo "Expected log keyword '$expected_log' not found"
+        if ! log_absent "$job_resp" "$absent_log"; then
+          echo "Forbidden log keyword found: '$absent_log'"
           echo "$job_resp"
           exit 1
         fi

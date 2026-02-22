@@ -14,6 +14,10 @@ on:
           - "0"
           - "1"
 
+concurrency:
+  group: full-smoke-nightly
+  cancel-in-progress: false
+
 jobs:
   full-smoke:
     runs-on: ubuntu-latest

@@ -93,12 +93,3 @@ PASS: review gate checks passed.
 
 ## Blockers
 - none
-
-## Monitor Outputs
-- Status markdown: docs/PROGRESS_STATUS.md
-- Status json: docs/PROGRESS_STATUS.json
-- Trend markdown: docs/PROGRESS_TREND.md
-- Metrics output: docs/PROGRESS_METRICS.prom
-- History snapshot markdown: docs/progress_history/20260222T053451Z.md
-- History snapshot json: docs/progress_history/20260222T053451Z.json
-- History files pruned this run: 0

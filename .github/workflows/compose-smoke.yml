@@ -8,6 +8,10 @@ on:
     branches:
       - main
 
+concurrency:
+  group: compose-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend-and-compose-smoke:
     runs-on: ubuntu-latest

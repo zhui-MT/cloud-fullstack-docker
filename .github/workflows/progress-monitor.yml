@@ -39,6 +39,8 @@ jobs:
           SMOKE_SKIP_BUILD: "1"
           STRICT_MODE: "1"
           SAVE_HISTORY: "1"
+          HISTORY_RETENTION_DAYS: "14"
+          METRICS_OUTPUT_FILE: "docs/PROGRESS_METRICS.prom"
         run: scripts/progress_monitor.sh
 
       - name: Upload progress snapshot artifact
@@ -49,6 +51,7 @@ jobs:
             docs/PROGRESS_STATUS.md
             docs/PROGRESS_STATUS.json
             docs/PROGRESS_TREND.md
+            docs/PROGRESS_METRICS.prom
             docs/progress_history
           retention-days: 14
 

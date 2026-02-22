@@ -1823,6 +1823,69 @@ Response (`200`, 节选):
 2. 将 `COMPOSE_UP_NON_RETRYABLE_REGEX` 拆分为多条可读规则并在脚本内拼接。
 3. 给 nightly/weekly workflow 增加 `concurrency`，避免同类任务并发互相抢占资源。
 
+## Round 21
+
+### Goal
+完善 CI 稳定性细节：控制同类 workflow 并发冲突，并为 compose 日志 artifact 加体积裁剪。
+
+### Implemented
+- 更新 `scripts/collect_compose_logs.sh`
+  - 新增日志裁剪参数：
+    - `COMPOSE_LOG_MAX_FILE_BYTES`（默认 `5MB`）
+    - `COMPOSE_LOG_TAIL_BYTES`（默认 `256KB`）
+  - 对 `services.log` 与 `events.jsonl` 超限文件自动裁剪（保留尾部并写入截断说明）。
+  - 新增 `manifest.txt`，记录关键输出文件字节数和裁剪配置。
+- 更新 workflow 并发策略：
+  - `.github/workflows/compose-smoke.yml`
+    - `concurrency.group: compose-smoke-${{ github.ref }}`
+    - `cancel-in-progress: true`
+  - `.github/workflows/full-smoke-nightly.yml`
+    - `concurrency.group: full-smoke-nightly`
+    - `cancel-in-progress: false`
+  - `.github/workflows/full-smoke-enrichment-weekly.yml`
+    - `concurrency.group: full-smoke-enrichment-weekly`
+    - `cancel-in-progress: false`
+- 更新 `README.md`
+  - CI 章节补充日志裁剪行为与可调参数说明。
+  - 补充 nightly/weekly 并发策略说明。
+
+### Changed Files
+- `cloud-fullstack-docker/scripts/collect_compose_logs.sh`
+- `cloud-fullstack-docker/.github/workflows/compose-smoke.yml`
+- `cloud-fullstack-docker/.github/workflows/full-smoke-nightly.yml`
+- `cloud-fullstack-docker/.github/workflows/full-smoke-enrichment-weekly.yml`
+- `cloud-fullstack-docker/README.md`
+- `cloud-fullstack-docker/docs/DEVLOG.md`
+
+### Validation
+执行时间：2026-02-22
+
+1) 脚本语法与 compose 配置
+- 命令：`bash -n scripts/collect_compose_logs.sh scripts/compose_up_retry.sh`
+- 结果：通过
+- 命令：`docker compose --env-file .env.example config`
+- 结果：通过
+
+2) 日志裁剪验证
+- 命令：`COMPOSE_LOG_MAX_FILE_BYTES=200 COMPOSE_LOG_TAIL_BYTES=80 scripts/collect_compose_logs.sh /tmp/compose-logs-trimtest`
+- 结果：通过，`services.log/events.jsonl` 出现 `truncated` 头并保留尾部，`manifest.txt` 记录大小
+
+3) 运行态 smoke
+- 命令：`SKIP_BUILD=1 scripts/compose_smoke.sh`
+- 结果：PASS
+
+4) 后端回归
+- 命令：`cd backend && npm test`
+- 结果：`33 passed, 0 failed`
+
+### Risks / Open Questions
+- 当前裁剪策略按“字节尾部”保留，JSON 行边界可能被截断；已在文件头写明 truncation 信息，后续可按行裁剪优化可读性。
+
+### Next Round Options
+1. 将 `manifest.txt` 增加 SHA256，便于 artifact 完整性对比。
+2. 按文件类型细化裁剪阈值（例如 `events.jsonl` 单独更大阈值）。
+3. 在 weekly workflow 增加 `concurrency` 与 schedule 说明到 `docs/REVIEW_PROTOCOL.md`。
+
 ## Round 4 (API Refresh)
 
 ### Goal
@@ -2142,6 +2205,8 @@ Response (`200`, 节选):
 - `api/scripts/e2e_round4.sh`
   - 增加 `EXPECT_GO_ID` / `EXPECT_KEGG_ID` 精确匹配断言开关
   - 增加 `EXPECT_LOGS` 日志关键字断言开关（逗号分隔）
+  - 增加 `EXPECT_LOGS_ORDERED=1`，按日志出现顺序匹配关键字序列
+  - 增加 `EXPECT_LOGS_ABSENT`，断言禁止出现的日志关键字（逗号分隔）
 - `README.md`
   - 新增 `api-round4` workflow 说明与断言项说明
 
@@ -2167,6 +2232,8 @@ Response (`200`, 节选):
   - `logHighlights` 包含 `Remote r-engine completed`
 - 断言项包含：
   - `EXPECT_LOGS="Running limma + clusterProfiler via R runtime,Remote r-engine completed"`
+  - `EXPECT_LOGS_ORDERED=1`
+  - `EXPECT_LOGS_ABSENT="fallback,R chain unavailable,Local Rscript runner failed"`
 
 2) API 单测
 - 命令：`cd api && npm test`
@@ -2189,8 +2256,8 @@ Response (`200`, 节选):
 
 ### Next Round Options
 1. 在具备 R 依赖的 runner 上补一条真实 `Rscript` 分支用例，和 mock 分支并行验证。
-2. 为 `EXPECT_LOGS` 增加“严格顺序匹配”模式，避免仅命中无关日志。
-3. 在 `api-round4.yml` 增加手动参数化触发（可切换 mock/real 两种模式）。
+2. 在 `api-round4.yml` 增加手动参数化触发（可切换 mock/real 两种模式）。
+3. 为 `EXPECT_LOGS_ABSENT` 增加严格顺序反向检查（在关键路径间禁止插入异常日志）。
 
 ## Round 6 (r-engine Build Profile Hardening)
 
@@ -2242,3 +2309,56 @@ Response (`200`, 节选):
 1. 新增 CI 变量，默认运行态 smoke 走 `SKIP_BUILD=1`，仅夜间任务执行 full build。
 2. 继续瘦身 `r-engine` apt 依赖（按包级别核减）并基于构建时间做 A/B 记录。
 3. 把富集能力拆为单独镜像标签（`r-engine:core` / `r-engine:enrich`）降低日常迭代成本。
+
+## Progress Monitor v4
+
+### Goal
+继续强化长期监控能力：增加历史保留策略、可抓取指标文件、趋势中的 blocker 热点统计。
+
+### Implemented
+- 升级 `scripts/progress_monitor.sh`：
+  - 新增 `HISTORY_RETENTION_DAYS`（默认 14），自动清理过期历史快照
+  - 新增 `METRICS_OUTPUT_FILE`（默认 `docs/PROGRESS_METRICS.prom`）
+  - 新增 `BLOCKER_TOP_N`（默认 5），趋势报告展示 blocker 高频项
+  - `PROGRESS_STATUS.md` 增加 metrics/retention 输出信息
+  - `PROGRESS_METRICS.prom` 输出核心数值（overall、变更规模、测试状态、时延、blocker、运行服务、历史清理数）
+- 升级 `.github/workflows/progress-monitor.yml`：
+  - 透传 `HISTORY_RETENTION_DAYS=14`
+  - 上传 `docs/PROGRESS_METRICS.prom` artifact
+- 更新文档：
+  - `README.md` 增加 retention/metrics 使用示例
+  - `docs/VERSION_CONTROL.md` 增加产物说明
+
+### Changed Files
+- `cloud-fullstack-docker/scripts/progress_monitor.sh`
+- `cloud-fullstack-docker/.github/workflows/progress-monitor.yml`
+- `cloud-fullstack-docker/README.md`
+- `cloud-fullstack-docker/docs/VERSION_CONTROL.md`
+- `cloud-fullstack-docker/docs/DEVLOG.md`
+
+### Validation
+执行时间：2026-02-21
+
+1) 语法检查
+- 命令：`bash -n scripts/progress_monitor.sh`
+- 结果：通过
+
+2) 严格模式 + 快速运行（跳过 smoke）
+- 命令：`STRICT_MODE=1 RUN_SMOKE=0 scripts/progress_monitor.sh`
+- 结果：通过，生成 `PROGRESS_STATUS/JSON/TREND/METRICS` 与 history 快照
+
+3) 严格模式 + 运行态 smoke
+- 命令：`STRICT_MODE=1 RUN_SMOKE=1 SMOKE_SKIP_BUILD=1 scripts/progress_monitor.sh`
+- 结果：通过，`compose smoke=PASS`，`overall status=CODE_HEALTHY`
+
+4) 字段验证
+- 命令：`rg -n '^# HELP progress_|^progress_' docs/PROGRESS_METRICS.prom`
+- 结果：指标文件生成且包含关键字段
+
+### Risks / Open Questions
+- 趋势报告目前基于本地 history 快照目录；若 CI 与本地分别运行，会形成两套历史，后续可考虑统一存储路径（artifact/对象存储）。
+
+### Next Round Options
+1. 增加 `HISTORY_RETENTION_COUNT`（按数量保留）与按天策略并行。
+2. 输出 `progress_metrics.json`，便于非 Prometheus 消费方接入。
+3. 在趋势报告中加入“测试耗时变化率”告警阈值。

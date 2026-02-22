@@ -14,8 +14,11 @@ TOP_N_PATHS="${TOP_N_PATHS:-10}"
 STRICT_MODE="${STRICT_MODE:-0}"
 SAVE_HISTORY="${SAVE_HISTORY:-1}"
 HISTORY_DIR="${HISTORY_DIR:-docs/progress_history}"
+HISTORY_RETENTION_DAYS="${HISTORY_RETENTION_DAYS:-14}"
 TREND_OUTPUT_FILE="${TREND_OUTPUT_FILE:-docs/PROGRESS_TREND.md}"
 TREND_WINDOW="${TREND_WINDOW:-20}"
+BLOCKER_TOP_N="${BLOCKER_TOP_N:-5}"
+METRICS_OUTPUT_FILE="${METRICS_OUTPUT_FILE:-docs/PROGRESS_METRICS.prom}"
 if [[ "$OUTPUT_FILE" == *.* ]]; then
   default_json_output="${OUTPUT_FILE%.*}.json"
 else
@@ -44,6 +47,8 @@ json_dir="$(dirname "$JSON_OUTPUT_FILE")"
 mkdir -p "$json_dir"
 trend_dir="$(dirname "$TREND_OUTPUT_FILE")"
 mkdir -p "$trend_dir"
+metrics_dir="$(dirname "$METRICS_OUTPUT_FILE")"
+mkdir -p "$metrics_dir"
 if [[ "$SAVE_HISTORY" == "1" ]]; then
   mkdir -p "$HISTORY_DIR"
 fi
@@ -213,7 +218,9 @@ fi
   echo "- Overall status: **${overall_status}**"
   echo "- Strict mode: ${STRICT_MODE}"
   echo "- Save history: ${SAVE_HISTORY}"
+  echo "- History retention days: ${HISTORY_RETENTION_DAYS}"
   echo "- Trend output: ${TREND_OUTPUT_FILE}"
+  echo "- Metrics output: ${METRICS_OUTPUT_FILE}"
   echo
   echo "## Repo Baseline"
   echo "- Branch: \`${branch}\`"
@@ -317,8 +324,11 @@ PREV_JSON_SNAPSHOT="$prev_json_snapshot" \
 STRICT_MODE_VALUE="$STRICT_MODE" \
 SAVE_HISTORY_VALUE="$SAVE_HISTORY" \
 HISTORY_DIR_VALUE="$HISTORY_DIR" \
+HISTORY_RETENTION_DAYS_VALUE="$HISTORY_RETENTION_DAYS" \
 TREND_OUTPUT_FILE_VALUE="$TREND_OUTPUT_FILE" \
 TREND_WINDOW_VALUE="$TREND_WINDOW" \
+BLOCKER_TOP_N_VALUE="$BLOCKER_TOP_N" \
+METRICS_OUTPUT_FILE_VALUE="$METRICS_OUTPUT_FILE" \
 node - <<'NODE' >"$JSON_OUTPUT_FILE"
 const fs = require('fs');
 
@@ -355,8 +365,11 @@ const now = {
     strict_mode: process.env.STRICT_MODE_VALUE === '1',
     save_history: process.env.SAVE_HISTORY_VALUE === '1',
     history_dir: process.env.HISTORY_DIR_VALUE,
+    history_retention_days: toInt(process.env.HISTORY_RETENTION_DAYS_VALUE),
     trend_output_file: process.env.TREND_OUTPUT_FILE_VALUE,
     trend_window: toInt(process.env.TREND_WINDOW_VALUE),
+    blocker_top_n: toInt(process.env.BLOCKER_TOP_N_VALUE),
+    metrics_output_file: process.env.METRICS_OUTPUT_FILE_VALUE,
   },
   repo: {
     branch: process.env.BRANCH,
@@ -442,6 +455,7 @@ NODE
 
 history_json_path="(not saved)"
 history_md_path="(not saved)"
+history_pruned_count=0
 if [[ "$SAVE_HISTORY" == "1" ]]; then
   history_stamp="$(date -u '+%Y%m%dT%H%M%SZ')"
   history_json_path="${HISTORY_DIR}/${history_stamp}.json"
@@ -450,11 +464,25 @@ if [[ "$SAVE_HISTORY" == "1" ]]; then
   cp "$OUTPUT_FILE" "$history_md_path"
   cp "$JSON_OUTPUT_FILE" "${HISTORY_DIR}/latest.json"
   cp "$OUTPUT_FILE" "${HISTORY_DIR}/latest.md"
+
+  retention_days="$HISTORY_RETENTION_DAYS"
+  if ! [[ "$retention_days" =~ ^[0-9]+$ ]]; then
+    retention_days=14
+  fi
+  if [[ "$retention_days" -gt 0 ]]; then
+    before_count="$(find "$HISTORY_DIR" -maxdepth 1 -type f \( -name '*.json' -o -name '*.md' \) ! -name 'latest.json' ! -name 'latest.md' | wc -l | tr -d ' ')"
+    find "$HISTORY_DIR" -maxdepth 1 -type f \( -name '*.json' -o -name '*.md' \) ! -name 'latest.json' ! -name 'latest.md' -mtime "+$((retention_days-1))" -delete
+    after_count="$(find "$HISTORY_DIR" -maxdepth 1 -type f \( -name '*.json' -o -name '*.md' \) ! -name 'latest.json' ! -name 'latest.md' | wc -l | tr -d ' ')"
+    if [[ "$before_count" =~ ^[0-9]+$ && "$after_count" =~ ^[0-9]+$ && "$before_count" -ge "$after_count" ]]; then
+      history_pruned_count=$((before_count-after_count))
+    fi
+  fi
 fi
 
 HISTORY_DIR_PATH="$HISTORY_DIR" \
 TREND_OUTPUT_PATH="$TREND_OUTPUT_FILE" \
 TREND_WINDOW_SIZE="$TREND_WINDOW" \
+BLOCKER_TOP_N_SIZE="$BLOCKER_TOP_N" \
 node - <<'NODE'
 const fs = require('fs');
 const path = require('path');
@@ -462,6 +490,7 @@ const path = require('path');
 const historyDir = process.env.HISTORY_DIR_PATH || 'docs/progress_history';
 const trendOutput = process.env.TREND_OUTPUT_PATH || 'docs/PROGRESS_TREND.md';
 const windowSize = Number(process.env.TREND_WINDOW_SIZE || 20);
+const blockerTopN = Number(process.env.BLOCKER_TOP_N_SIZE || 5);
 
 let files = [];
 try {
@@ -486,6 +515,7 @@ for (const file of selected) {
 }
 
 const statusCounts = {};
+const blockerCounts = new Map();
 let changedTotal = 0;
 let changedSamples = 0;
 let blockersActiveCount = 0;
@@ -506,6 +536,11 @@ for (const { data } of snapshots) {
 
   const blockers = Array.isArray(data.blockers) ? data.blockers : [];
   if (blockers.length > 0) blockersActiveCount += 1;
+  for (const blocker of blockers) {
+    const key = String(blocker || '').trim();
+    if (!key) continue;
+    blockerCounts.set(key, (blockerCounts.get(key) || 0) + 1);
+  }
 
   const apiDuration = Number(data?.validation?.api_tests?.duration_ms);
   if (Number.isFinite(apiDuration)) {
@@ -523,6 +558,7 @@ for (const { data } of snapshots) {
 const avgChanged = changedSamples > 0 ? (changedTotal / changedSamples).toFixed(2) : '-';
 const avgApiDuration = apiDurationSamples > 0 ? (apiDurationTotal / apiDurationSamples).toFixed(2) : '-';
 const avgBackendDuration = backendDurationSamples > 0 ? (backendDurationTotal / backendDurationSamples).toFixed(2) : '-';
+const sortedBlockers = Array.from(blockerCounts.entries()).sort((a, b) => b[1] - a[1]);
 
 const lines = [];
 lines.push('# Development Progress Trend');
@@ -540,8 +576,20 @@ if (snapshots.length === 0) {
   lines.push(`- Status distribution: ${Object.entries(statusCounts).map(([k, v]) => `${k}=${v}`).join(', ')}`);
   lines.push(`- Average changed files: ${avgChanged}`);
   lines.push(`- Snapshots with blockers: ${blockersActiveCount}/${snapshots.length}`);
+  lines.push(`- Distinct blocker signatures: ${sortedBlockers.length}`);
   lines.push(`- Average api test duration (ms): ${avgApiDuration}`);
   lines.push(`- Average backend test duration (ms): ${avgBackendDuration}`);
+  lines.push('');
+  lines.push('## Blocker Hotspots');
+  if (sortedBlockers.length === 0) {
+    lines.push('- none');
+  } else {
+    lines.push('| Blocker | Frequency |');
+    lines.push('| --- | ---: |');
+    for (const [name, count] of sortedBlockers.slice(0, Math.max(blockerTopN, 1))) {
+      lines.push(`| ${name.replace(/\|/g, '\\|')} | ${count} |`);
+    }
+  }
   lines.push('');
   lines.push('## Recent Snapshots');
   lines.push('| UTC | Status | Changed Files | Blockers | API Tests | Backend Tests |');
@@ -562,14 +610,111 @@ if (snapshots.length === 0) {
 fs.writeFileSync(trendOutput, `${lines.join('\n')}\n`);
 NODE
 
+status_to_num() {
+  case "$1" in
+    PASS|CODE_HEALTHY|AVAILABLE) echo "1" ;;
+    FAIL|BLOCKED_ON_QUALITY|BLOCKED_ON_RUNTIME|UNAVAILABLE) echo "0" ;;
+    SKIPPED|IN_PROGRESS) echo "-1" ;;
+    *) echo "-1" ;;
+  esac
+}
+
+duration_to_num() {
+  local raw="$1"
+  local n="${raw%ms}"
+  if [[ "$n" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+    echo "$n"
+  else
+    echo "0"
+  fi
+}
+
+history_snapshot_count=0
+if [[ "$SAVE_HISTORY" == "1" ]]; then
+  history_snapshot_count="$(find "$HISTORY_DIR" -maxdepth 1 -type f -name '*.json' ! -name 'latest.json' | wc -l | tr -d ' ')"
+fi
+
+api_status_num="$(status_to_num "$api_test_status")"
+backend_status_num="$(status_to_num "$backend_test_status")"
+gate_status_num="$(status_to_num "$review_gate_status")"
+smoke_status_num="$(status_to_num "$smoke_status")"
+docker_status_num="$(status_to_num "$docker_status")"
+overall_status_num="$(status_to_num "$overall_status")"
+api_duration_num="$(duration_to_num "$api_test_duration")"
+backend_duration_num="$(duration_to_num "$backend_test_duration")"
+blockers_total="${#blockers[@]}"
+blockers_active=0
+if [[ "$blockers_total" -gt 0 ]]; then
+  blockers_active=1
+fi
+
+cat >"$METRICS_OUTPUT_FILE" <<EOF
+# HELP progress_overall_status_status Labeled overall progress status.
+# TYPE progress_overall_status_status gauge
+progress_overall_status_status{status="$overall_status"} 1
+# HELP progress_overall_status_code Numeric overall status: 1 healthy, 0 blocked, -1 in-progress/unknown.
+# TYPE progress_overall_status_code gauge
+progress_overall_status_code $overall_status_num
+# HELP progress_total_changed_files Total changed files in working tree.
+# TYPE progress_total_changed_files gauge
+progress_total_changed_files $total_changes
+# HELP progress_staged_changes Staged changes count.
+# TYPE progress_staged_changes gauge
+progress_staged_changes $staged_changes
+# HELP progress_unstaged_changes Unstaged changes count.
+# TYPE progress_unstaged_changes gauge
+progress_unstaged_changes $unstaged_changes
+# HELP progress_untracked_files Untracked files count.
+# TYPE progress_untracked_files gauge
+progress_untracked_files $untracked_changes
+# HELP progress_blockers_total Blockers count in current snapshot.
+# TYPE progress_blockers_total gauge
+progress_blockers_total $blockers_total
+# HELP progress_blockers_active Whether blockers exist (1=true, 0=false).
+# TYPE progress_blockers_active gauge
+progress_blockers_active $blockers_active
+# HELP progress_api_tests_status Numeric api test status.
+# TYPE progress_api_tests_status gauge
+progress_api_tests_status $api_status_num
+# HELP progress_backend_tests_status Numeric backend test status.
+# TYPE progress_backend_tests_status gauge
+progress_backend_tests_status $backend_status_num
+# HELP progress_review_gate_status Numeric review gate status.
+# TYPE progress_review_gate_status gauge
+progress_review_gate_status $gate_status_num
+# HELP progress_compose_smoke_status Numeric compose smoke status.
+# TYPE progress_compose_smoke_status gauge
+progress_compose_smoke_status $smoke_status_num
+# HELP progress_docker_daemon_status Numeric docker daemon availability.
+# TYPE progress_docker_daemon_status gauge
+progress_docker_daemon_status $docker_status_num
+# HELP progress_api_test_duration_ms API test duration in ms.
+# TYPE progress_api_test_duration_ms gauge
+progress_api_test_duration_ms $api_duration_num
+# HELP progress_backend_test_duration_ms Backend test duration in ms.
+# TYPE progress_backend_test_duration_ms gauge
+progress_backend_test_duration_ms $backend_duration_num
+# HELP progress_running_services_count Number of running compose services.
+# TYPE progress_running_services_count gauge
+progress_running_services_count $running_services_count
+# HELP progress_history_snapshots_total Number of history json snapshots retained.
+# TYPE progress_history_snapshots_total gauge
+progress_history_snapshots_total $history_snapshot_count
+# HELP progress_history_pruned_count Number of history files pruned in this run.
+# TYPE progress_history_pruned_count gauge
+progress_history_pruned_count $history_pruned_count
+EOF
+
 {
   echo
   echo "## Monitor Outputs"
   echo "- Status markdown: ${OUTPUT_FILE}"
   echo "- Status json: ${JSON_OUTPUT_FILE}"
   echo "- Trend markdown: ${TREND_OUTPUT_FILE}"
+  echo "- Metrics output: ${METRICS_OUTPUT_FILE}"
   echo "- History snapshot markdown: ${history_md_path}"
   echo "- History snapshot json: ${history_json_path}"
+  echo "- History files pruned this run: ${history_pruned_count}"
 } >>"$OUTPUT_FILE"
 
 strict_failed=0
@@ -584,6 +729,7 @@ fi
 echo "Progress snapshot generated: $OUTPUT_FILE"
 echo "Progress JSON generated: $JSON_OUTPUT_FILE"
 echo "Progress trend generated: $TREND_OUTPUT_FILE"
+echo "Progress metrics generated: $METRICS_OUTPUT_FILE"
 if [[ "$SAVE_HISTORY" == "1" ]]; then
   echo "Progress history snapshot saved: $history_json_path"
 fi

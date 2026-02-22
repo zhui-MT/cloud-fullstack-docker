@@ -81,6 +81,8 @@ echo "run round4 e2e assertions"
     EXPECT_GO_ID=GO:0006954 \
     EXPECT_KEGG_ID=hsa04060 \
     EXPECT_LOGS="Running limma + clusterProfiler via R runtime,Remote r-engine completed" \
+    EXPECT_LOGS_ORDERED=1 \
+    EXPECT_LOGS_ABSENT="fallback,R chain unavailable,Local Rscript runner failed" \
     api/scripts/e2e_round4.sh
 )
 

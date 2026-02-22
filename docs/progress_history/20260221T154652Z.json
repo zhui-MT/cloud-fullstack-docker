@@ -1,58 +1,42 @@
 {
-  "generated_at_local": "2026-02-22 13:34:13 +0800",
-  "generated_at_utc": "2026-02-22T05:34:13Z",
+  "generated_at_local": "2026-02-21 23:46:12 +0800",
+  "generated_at_utc": "2026-02-21T15:46:12Z",
   "overall_status": "CODE_HEALTHY",
   "monitor_config": {
     "strict_mode": true,
     "save_history": true,
     "history_dir": "docs/progress_history",
-    "history_retention_days": 14,
     "trend_output_file": "docs/PROGRESS_TREND.md",
-    "trend_window": 20,
-    "blocker_top_n": 5,
-    "metrics_output_file": "docs/PROGRESS_METRICS.prom"
+    "trend_window": 20
   },
   "repo": {
     "branch": "main",
-    "head_sha": "e5b8aa7",
-    "head_subject": "chore: finalize progress monitor strict mode and devlog",
-    "head_date": "2026-02-22 13:30:54 +0800",
-    "head_tags": "release/round5",
-    "latest_devlog_section": "## Progress Monitor v4"
+    "head_sha": "ac66cac",
+    "head_subject": "chore: monitor r-engine build profile and runtime verification",
+    "head_date": "2026-02-21 23:44:09 +0800",
+    "head_tags": "monitor-20260221-234409",
+    "latest_devlog_section": "## Round 6 (r-engine Build Profile Hardening)"
   },
   "working_tree": {
-    "total_changed_files": 19,
+    "total_changed_files": 10,
     "staged_changes": 0,
-    "unstaged_changes": 15,
-    "untracked_files": 4,
+    "unstaged_changes": 8,
+    "untracked_files": 2,
     "top_changed_paths": [
-      "   7 docs",
-      "   4 .github",
-      "   2 scripts",
-      "   2 api",
-      "   1 README_files",
+      "   6 docs",
+      "   2 .github",
       "   1 README.md",
-      "   1 README.html",
       "   1 .env.example"
     ],
     "changed_files_preview": [
       " M .env.example",
-      " M .github/workflows/compose-smoke.yml",
       " M .github/workflows/full-smoke-enrichment-weekly.yml",
-      " M .github/workflows/full-smoke-nightly.yml",
       " M .github/workflows/progress-monitor.yml",
       " M README.md",
-      " M api/scripts/ci_round4_mock_remote.sh",
-      " M api/scripts/e2e_round4.sh",
       " M docs/DEVLOG.md",
       " M docs/PROGRESS_STATUS.json",
       " M docs/PROGRESS_STATUS.md",
       " M docs/ROUND5_RELEASE_CHECKLIST.md",
-      " M docs/VERSION_CONTROL.md",
-      " M scripts/collect_compose_logs.sh",
-      " M scripts/progress_monitor.sh",
-      "?? README.html",
-      "?? README_files/",
       "?? docs/PROGRESS_TREND.md",
       "?? docs/progress_history/"
     ]
@@ -62,54 +46,64 @@
       "status": "PASS",
       "pass": 10,
       "fail": 0,
-      "duration_ms": 35629.963209
+      "duration_ms": 35594.6145
     },
     "backend_tests": {
       "status": "PASS",
       "pass": 33,
       "fail": 0,
-      "duration_ms": 683.347833
+      "duration_ms": 1379.149125
     },
     "review_gate": {
       "status": "PASS",
       "tail": [
         "Review Gate Report",
-        "Round: monitor-20260222-133451",
+        "Round: monitor-20260221-234651",
         "Repo:  /Users/zhui/Desktop/cs/cloud-fullstack-docker",
         "PASS: review gate checks passed."
       ]
     },
     "compose_smoke": {
-      "status": "SKIPPED",
+      "status": "PASS",
       "tail": [
-        "(not executed)"
+        "[smoke] upload",
+        "[smoke] upload detail",
+        "[smoke] upload mapped rows page",
+        "[smoke] session upload list",
+        "[smoke] delete upload",
+        "[smoke] session upload list after delete",
+        "[smoke] upload again for bulk session delete",
+        "[smoke] delete session uploads",
+        "[smoke] session upload list after bulk delete",
+        "PASS: compose smoke checks passed."
       ]
     }
   },
   "runtime": {
     "docker_daemon": "AVAILABLE",
-    "running_services_count": 5,
+    "running_services_count": 6,
     "running_services": [
+      "r-engine",
       "api",
+      "frontend",
       "minio",
       "postgres",
-      "r-engine",
       "redis"
     ]
   },
   "devlog_recent_sections": [
+    "## Progress Monitor",
     "## Progress Monitor v2",
     "## Progress Monitor v3",
     "## Round 4 (CI Gate Automation)",
-    "## Round 6 (r-engine Build Profile Hardening)",
-    "## Progress Monitor v4"
+    "## Round 6 (r-engine Build Profile Hardening)"
   ],
   "blockers": [],
   "delta": {
     "since_previous_snapshot": {
-      "total_changed_files": 9,
+      "total_changed_files": 8,
       "staged_changes": 0,
-      "unstaged_changes": 7,
+      "unstaged_changes": 6,
       "untracked_files": 2,
       "blockers_added": [],
       "blockers_resolved": [],
