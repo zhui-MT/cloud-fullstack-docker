@@ -37,6 +37,8 @@ jobs:
         env:
           RUN_SMOKE: "0"
           SMOKE_SKIP_BUILD: "1"
+          STRICT_MODE: "1"
+          SAVE_HISTORY: "1"
         run: scripts/progress_monitor.sh
 
       - name: Upload progress snapshot artifact
@@ -46,7 +48,12 @@ jobs:
           path: |
             docs/PROGRESS_STATUS.md
             docs/PROGRESS_STATUS.json
+            docs/PROGRESS_TREND.md
+            docs/progress_history
           retention-days: 14
 
       - name: Publish summary
-        run: cat docs/PROGRESS_STATUS.md >> "$GITHUB_STEP_SUMMARY"
+        run: |
+          cat docs/PROGRESS_STATUS.md >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          cat docs/PROGRESS_TREND.md >> "$GITHUB_STEP_SUMMARY"

@@ -911,22 +911,29 @@ Response (`200`, 节选):
 在 Round 5 基础上执行一次可发布门禁复核，给出可部署/可复现/可回滚状态。
 
 ### Implemented
-- 复跑后端全测试：`npm test`（7/7 通过）。
+- 复跑后端全测试：`npm test`（33/33 通过）。
 - 复跑回归 + 性能：`npm run test:summary`，刷新 `docs/ROUND5_TEST_SUMMARY.md`。
 - 复跑前端构建：`npm run build` 通过。
+- 完成 `r-engine` 镜像构建（默认 profile，`R_ENGINE_INSTALL_ENRICHMENT_PACKAGES=0`）。
+- 完成 compose 运行态验收（`up -d --no-build` + health + full smoke）。
 - 生成发布门禁执行报告：`docs/ROUND5_RELEASE_CHECKLIST.md`。
 - 更新 README 与 Round 5 性能数字为最新实测值。
 
 ### Validation
-- `cd backend && npm test` -> `7 passed, 0 failed`
+- `cd backend && npm test` -> `33 passed, 0 failed`
 - `cd backend && npm run test:summary` -> regression `PASS`
+- `docker compose --env-file .env.example build r-engine` -> `Successfully built` / `Successfully tagged`
+- `docker compose --env-file .env.example up -d --no-build` -> services healthy
+- `docker compose --env-file .env.example ps` -> `frontend/api/postgres/redis/r-engine/minio` healthy
+- `curl -fsS http://localhost:4000/api/health` -> `ok=true`
+- `curl -fsS http://localhost:8000/health` -> `ok=true`
+- `SKIP_BUILD=1 scripts/compose_smoke.sh` -> `PASS`
 - `cd frontend && npm run build` -> `built`
-- `docker compose up -d --build` -> blocked（Docker daemon 未启动）
 
 ### Gate Status
-- Deployable: **BLOCKED**（环境阻塞）
+- Deployable: **PASS**
 - Reproducible: **PASS**
-- Rollback-ready: **PARTIAL**（待执行 release tag + Docker 回滚演练）
+- Rollback-ready: **PARTIAL**（待执行 release tag + 回滚演练）
 
 ## Governance Remediation (Review 3 Fixes)
 
@@ -1770,6 +1777,52 @@ Response (`200`, 节选):
 2. 在 weekly enrichment workflow 增加 `backend npm test` 前置门禁。
 3. 对 `compose-logs` artifact 增加大小裁剪策略（避免极端日志过大）。
 
+## Round 20
+
+### Goal
+继续收口 CI 配置化与门禁顺序：把 non-retryable 规则外置配置，并在 weekly enrichment 链路前置 backend 回归测试。
+
+### Implemented
+- 更新 `.env.example`
+  - 新增 `COMPOSE_UP_NON_RETRYABLE_REGEX`，供 `scripts/compose_up_retry.sh` 读取并在 CI 中无代码调整。
+- 更新 `.github/workflows/full-smoke-enrichment-weekly.yml`
+  - `setup-node` 增加 npm cache（`backend/package-lock.json`）
+  - 新增前置步骤：
+    - `Install backend dependencies`（`cd backend && npm ci`）
+    - `Run backend tests`（`cd backend && npm test`）
+  - 再执行 enrichment 栈 full-smoke，降低“明显回归却继续起全栈”的浪费。
+- 更新 `README.md`
+  - 补充 weekly enrichment workflow 的 backend 前置门禁说明。
+
+### Changed Files
+- `cloud-fullstack-docker/.env.example`
+- `cloud-fullstack-docker/.github/workflows/full-smoke-enrichment-weekly.yml`
+- `cloud-fullstack-docker/README.md`
+- `cloud-fullstack-docker/docs/DEVLOG.md`
+
+### Validation
+执行时间：2026-02-21
+
+1) compose 配置
+- 命令：`docker compose --env-file .env.example config`
+- 结果：通过
+
+2) 运行态 smoke
+- 命令：`SKIP_BUILD=1 scripts/compose_smoke.sh`
+- 结果：PASS
+
+3) 后端回归
+- 命令：`cd backend && npm test`
+- 结果：`33 passed, 0 failed`
+
+### Risks / Open Questions
+- weekly workflow 增加 `npm ci + npm test` 后总时长上升；若队列拥堵，可考虑把 test 结果通过 needs 复用给其它 workflow。
+
+### Next Round Options
+1. 为 `compose-logs` 增加大小上限（大日志仅保留 tail + 关键索引）。
+2. 将 `COMPOSE_UP_NON_RETRYABLE_REGEX` 拆分为多条可读规则并在脚本内拼接。
+3. 给 nightly/weekly workflow 增加 `concurrency`，避免同类任务并发互相抢占资源。
+
 ## Round 4 (API Refresh)
 
 ### Goal
@@ -1998,6 +2051,63 @@ Response (`200`, 节选):
 1. 增加 `--strict` 模式：存在 blocker 时脚本返回非 0，直接作为 CI gate。
 2. 输出 Prometheus-friendly 指标文件（`key=value`）供监控系统拉取。
 3. 在 JSON 中加入近 7 天趋势聚合（需保留历史快照目录）。
+
+## Progress Monitor v3
+
+### Goal
+把进度监控升级为“可门禁 + 可趋势”：支持严格失败策略、历史快照归档、趋势聚合报告。
+
+### Implemented
+- 升级 `scripts/progress_monitor.sh`：
+  - 新增 `STRICT_MODE=1`：当存在 blocker 或状态为 `BLOCKED_*` 时返回非 0
+  - 新增历史归档：`SAVE_HISTORY=1` 时写入 `docs/progress_history/<timestamp>.md|json`，并刷新 `latest.md|json`
+  - 新增趋势报告：自动生成 `docs/PROGRESS_TREND.md`（状态分布、平均改动量、阻塞占比、最近快照表）
+  - JSON 新增 `monitor_config` 字段，记录 strict/history/trend 配置
+  - 修正规则：`RUN_SMOKE=0` 时不再因为“无运行容器”误判 blocker
+- 更新 CI：
+  - `.github/workflows/progress-monitor.yml` 开启 `STRICT_MODE=1`
+  - 上传新增产物：`docs/PROGRESS_TREND.md`、`docs/progress_history`
+- 更新文档：
+  - `README.md` 增加 strict/history/trend 示例
+  - `docs/VERSION_CONTROL.md` 增加 strict gate 与趋势说明
+
+### Changed Files
+- `cloud-fullstack-docker/scripts/progress_monitor.sh`
+- `cloud-fullstack-docker/.github/workflows/progress-monitor.yml`
+- `cloud-fullstack-docker/README.md`
+- `cloud-fullstack-docker/docs/VERSION_CONTROL.md`
+- `cloud-fullstack-docker/docs/DEVLOG.md`
+
+### Validation
+执行时间：2026-02-21
+
+1) 语法检查
+- 命令：`bash -n scripts/progress_monitor.sh`
+- 结果：通过
+
+2) 严格模式快照（跳过 smoke）
+- 命令：`STRICT_MODE=1 RUN_SMOKE=0 scripts/progress_monitor.sh`
+- 结果：通过，生成：
+  - `docs/PROGRESS_STATUS.md`
+  - `docs/PROGRESS_STATUS.json`
+  - `docs/PROGRESS_TREND.md`
+  - `docs/progress_history/*.md|json`
+
+3) 趋势与配置字段检查
+- 命令：`rg -n '"monitor_config"|"delta"' docs/PROGRESS_STATUS.json && rg -n '^# Development Progress Trend|^## Summary' docs/PROGRESS_TREND.md`
+- 结果：字段与趋势摘要存在
+
+4) 严格模式 + smoke 运行态验证
+- 命令：`STRICT_MODE=1 RUN_SMOKE=1 SMOKE_SKIP_BUILD=1 scripts/progress_monitor.sh`
+- 结果：通过，`compose smoke=PASS`，`overall status=CODE_HEALTHY`
+
+### Risks / Open Questions
+- 历史快照目录会持续增长；建议后续加保留策略（按天数或按数量清理）。
+
+### Next Round Options
+1. 增加 `HISTORY_RETENTION_DAYS` 自动清理逻辑。
+2. 增加 metrics 文件输出（便于 Prometheus/Grafana）。
+3. 在趋势报告加入阻塞项 TopN。
 
 ## Round 4 (CI Gate Automation)
 
