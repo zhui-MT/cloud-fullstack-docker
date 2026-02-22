@@ -1,7 +1,7 @@
 {
-  "generated_at_local": "2026-02-22 13:34:13 +0800",
-  "generated_at_utc": "2026-02-22T05:34:13Z",
-  "overall_status": "CODE_HEALTHY",
+  "generated_at_local": "2026-02-22 13:35:22 +0800",
+  "generated_at_utc": "2026-02-22T05:35:22Z",
+  "overall_status": "BLOCKED_ON_QUALITY",
   "monitor_config": {
     "strict_mode": true,
     "save_history": true,
@@ -14,47 +14,29 @@
   },
   "repo": {
     "branch": "main",
-    "head_sha": "e5b8aa7",
-    "head_subject": "chore: finalize progress monitor strict mode and devlog",
-    "head_date": "2026-02-22 13:30:54 +0800",
-    "head_tags": "release/round5",
+    "head_sha": "db69a30",
+    "head_subject": "chore: harden CI smoke monitoring and log assertions",
+    "head_date": "2026-02-22 13:35:12 +0800",
+    "head_tags": "none",
     "latest_devlog_section": "## Progress Monitor v4"
   },
   "working_tree": {
-    "total_changed_files": 19,
+    "total_changed_files": 5,
     "staged_changes": 0,
-    "unstaged_changes": 15,
-    "untracked_files": 4,
+    "unstaged_changes": 2,
+    "untracked_files": 3,
     "top_changed_paths": [
-      "   7 docs",
-      "   4 .github",
-      "   2 scripts",
-      "   2 api",
+      "   2 docs",
+      "   1 scripts",
       "   1 README_files",
-      "   1 README.md",
-      "   1 README.html",
-      "   1 .env.example"
+      "   1 README.html"
     ],
     "changed_files_preview": [
-      " M .env.example",
-      " M .github/workflows/compose-smoke.yml",
-      " M .github/workflows/full-smoke-enrichment-weekly.yml",
-      " M .github/workflows/full-smoke-nightly.yml",
-      " M .github/workflows/progress-monitor.yml",
-      " M README.md",
-      " M api/scripts/ci_round4_mock_remote.sh",
-      " M api/scripts/e2e_round4.sh",
-      " M docs/DEVLOG.md",
-      " M docs/PROGRESS_STATUS.json",
-      " M docs/PROGRESS_STATUS.md",
-      " M docs/ROUND5_RELEASE_CHECKLIST.md",
       " M docs/VERSION_CONTROL.md",
-      " M scripts/collect_compose_logs.sh",
       " M scripts/progress_monitor.sh",
       "?? README.html",
       "?? README_files/",
-      "?? docs/PROGRESS_TREND.md",
-      "?? docs/progress_history/"
+      "?? docs/PROGRESS_METRICS.prom"
     ]
   },
   "validation": {
@@ -62,21 +44,22 @@
       "status": "PASS",
       "pass": 10,
       "fail": 0,
-      "duration_ms": 35629.963209
+      "duration_ms": 35607.998459
     },
     "backend_tests": {
       "status": "PASS",
       "pass": 33,
       "fail": 0,
-      "duration_ms": 683.347833
+      "duration_ms": 967.735125
     },
     "review_gate": {
-      "status": "PASS",
+      "status": "FAIL",
       "tail": [
         "Review Gate Report",
-        "Round: monitor-20260222-133451",
+        "Round: monitor-20260222-133600",
         "Repo:  /Users/zhui/Desktop/cs/cloud-fullstack-docker",
-        "PASS: review gate checks passed."
+        "Errors:",
+        "- code changed but docs/DEVLOG.md was not updated"
       ]
     },
     "compose_smoke": {
@@ -88,9 +71,10 @@
   },
   "runtime": {
     "docker_daemon": "AVAILABLE",
-    "running_services_count": 5,
+    "running_services_count": 6,
     "running_services": [
       "api",
+      "frontend",
       "minio",
       "postgres",
       "r-engine",
@@ -104,17 +88,21 @@
     "## Round 6 (r-engine Build Profile Hardening)",
     "## Progress Monitor v4"
   ],
-  "blockers": [],
+  "blockers": [
+    "review gate failed"
+  ],
   "delta": {
     "since_previous_snapshot": {
-      "total_changed_files": 9,
+      "total_changed_files": -14,
       "staged_changes": 0,
-      "unstaged_changes": 7,
-      "untracked_files": 2,
-      "blockers_added": [],
+      "unstaged_changes": -13,
+      "untracked_files": -1,
+      "blockers_added": [
+        "review gate failed"
+      ],
       "blockers_resolved": [],
       "previous_overall_status": "CODE_HEALTHY",
-      "current_overall_status": "CODE_HEALTHY"
+      "current_overall_status": "BLOCKED_ON_QUALITY"
     }
   }
 }
