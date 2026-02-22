@@ -49,6 +49,11 @@ jobs:
 
       - name: Collect compose logs
         if: always()
+        env:
+          COMPOSE_LOG_MAX_SERVICES_BYTES: "5242880"
+          COMPOSE_LOG_MAX_EVENTS_BYTES: "10485760"
+          COMPOSE_LOG_TAIL_SERVICES_BYTES: "262144"
+          COMPOSE_LOG_TAIL_EVENTS_BYTES: "524288"
         run: scripts/collect_compose_logs.sh /tmp/compose-logs
 
       - name: Upload compose logs artifact
@@ -58,6 +63,23 @@ jobs:
           name: compose-logs
           path: /tmp/compose-logs
           retention-days: 7
+
+      - name: Publish smoke summary
+        if: always()
+        env:
+          INSTALL_ENRICHMENT: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.install_enrichment || '0' }}
+        run: |
+          {
+            echo "### Full Smoke Nightly"
+            echo "- install_enrichment: ${INSTALL_ENRICHMENT}"
+            echo "- logs_artifact: compose-logs"
+            if [[ -f /tmp/compose-logs/manifest.txt ]]; then
+              echo "- manifest:"
+              echo '```text'
+              sed -n '1,80p' /tmp/compose-logs/manifest.txt
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Compose down
         if: always()
