@@ -1,42 +1,56 @@
 {
-  "generated_at_local": "2026-02-22 13:35:22 +0800",
-  "generated_at_utc": "2026-02-22T05:35:22Z",
-  "overall_status": "BLOCKED_ON_QUALITY",
+  "generated_at_local": "2026-02-22 13:43:16 +0800",
+  "generated_at_utc": "2026-02-22T05:43:16Z",
+  "overall_status": "CODE_HEALTHY",
   "monitor_config": {
     "strict_mode": true,
     "save_history": true,
     "history_dir": "docs/progress_history",
     "history_retention_days": 14,
+    "history_retention_count": 200,
     "trend_output_file": "docs/PROGRESS_TREND.md",
     "trend_window": 20,
     "blocker_top_n": 5,
-    "metrics_output_file": "docs/PROGRESS_METRICS.prom"
+    "metrics_output_file": "docs/PROGRESS_METRICS.prom",
+    "metrics_json_file": "docs/PROGRESS_METRICS.json"
   },
   "repo": {
     "branch": "main",
-    "head_sha": "db69a30",
-    "head_subject": "chore: harden CI smoke monitoring and log assertions",
-    "head_date": "2026-02-22 13:35:12 +0800",
-    "head_tags": "none",
-    "latest_devlog_section": "## Progress Monitor v4"
+    "head_sha": "25d2c4e",
+    "head_subject": "feat: extend progress monitor retention and json metrics",
+    "head_date": "2026-02-22 13:39:41 +0800",
+    "head_tags": "monitor-20260222-133954",
+    "latest_devlog_section": "## Progress Monitor v5"
   },
   "working_tree": {
-    "total_changed_files": 5,
+    "total_changed_files": 17,
     "staged_changes": 0,
-    "unstaged_changes": 2,
-    "untracked_files": 3,
+    "unstaged_changes": 8,
+    "untracked_files": 9,
     "top_changed_paths": [
-      "   2 docs",
+      "  14 docs",
       "   1 scripts",
       "   1 README_files",
       "   1 README.html"
     ],
     "changed_files_preview": [
-      " M docs/VERSION_CONTROL.md",
-      " M scripts/progress_monitor.sh",
+      " M docs/DEVLOG.md",
+      " M docs/PROGRESS_METRICS.prom",
+      " M docs/PROGRESS_STATUS.json",
+      " M docs/PROGRESS_STATUS.md",
+      " M docs/PROGRESS_TREND.md",
+      " M docs/progress_history/latest.json",
+      " M docs/progress_history/latest.md",
+      " M scripts/review_gate.sh",
       "?? README.html",
       "?? README_files/",
-      "?? docs/PROGRESS_METRICS.prom"
+      "?? docs/PROGRESS_METRICS.json",
+      "?? docs/progress_history/20260222T054001Z.json",
+      "?? docs/progress_history/20260222T054001Z.md",
+      "?? docs/progress_history/20260222T054150Z.json",
+      "?? docs/progress_history/20260222T054150Z.md",
+      "?? docs/progress_history/20260222T054250Z.json",
+      "?? docs/progress_history/20260222T054250Z.md"
     ]
   },
   "validation": {
@@ -44,28 +58,36 @@
       "status": "PASS",
       "pass": 10,
       "fail": 0,
-      "duration_ms": 35607.998459
+      "duration_ms": 35566.755917
     },
     "backend_tests": {
       "status": "PASS",
       "pass": 33,
       "fail": 0,
-      "duration_ms": 967.735125
+      "duration_ms": 623.722459
     },
     "review_gate": {
-      "status": "FAIL",
+      "status": "PASS",
       "tail": [
         "Review Gate Report",
-        "Round: monitor-20260222-133600",
+        "Round: monitor-20260222-134353",
         "Repo:  /Users/zhui/Desktop/cs/cloud-fullstack-docker",
-        "Errors:",
-        "- code changed but docs/DEVLOG.md was not updated"
+        "PASS: review gate checks passed."
       ]
     },
     "compose_smoke": {
-      "status": "SKIPPED",
+      "status": "PASS",
       "tail": [
-        "(not executed)"
+        "[smoke] upload",
+        "[smoke] upload detail",
+        "[smoke] upload mapped rows page",
+        "[smoke] session upload list",
+        "[smoke] delete upload",
+        "[smoke] session upload list after delete",
+        "[smoke] upload again for bulk session delete",
+        "[smoke] delete session uploads",
+        "[smoke] session upload list after bulk delete",
+        "PASS: compose smoke checks passed."
       ]
     }
   },
@@ -82,27 +104,23 @@
     ]
   },
   "devlog_recent_sections": [
-    "## Progress Monitor v2",
     "## Progress Monitor v3",
     "## Round 4 (CI Gate Automation)",
     "## Round 6 (r-engine Build Profile Hardening)",
-    "## Progress Monitor v4"
+    "## Progress Monitor v4",
+    "## Progress Monitor v5"
   ],
-  "blockers": [
-    "review gate failed"
-  ],
+  "blockers": [],
   "delta": {
     "since_previous_snapshot": {
-      "total_changed_files": -14,
+      "total_changed_files": 2,
       "staged_changes": 0,
-      "unstaged_changes": -13,
-      "untracked_files": -1,
-      "blockers_added": [
-        "review gate failed"
-      ],
+      "unstaged_changes": 0,
+      "untracked_files": 2,
+      "blockers_added": [],
       "blockers_resolved": [],
       "previous_overall_status": "CODE_HEALTHY",
-      "current_overall_status": "BLOCKED_ON_QUALITY"
+      "current_overall_status": "CODE_HEALTHY"
     }
   }
 }

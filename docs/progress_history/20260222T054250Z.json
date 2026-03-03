@@ -1,6 +1,6 @@
 {
-  "generated_at_local": "2026-02-22 13:43:16 +0800",
-  "generated_at_utc": "2026-02-22T05:43:16Z",
+  "generated_at_local": "2026-02-22 13:42:12 +0800",
+  "generated_at_utc": "2026-02-22T05:42:12Z",
   "overall_status": "CODE_HEALTHY",
   "monitor_config": {
     "strict_mode": true,
@@ -23,12 +23,12 @@
     "latest_devlog_section": "## Progress Monitor v5"
   },
   "working_tree": {
-    "total_changed_files": 17,
+    "total_changed_files": 15,
     "staged_changes": 0,
     "unstaged_changes": 8,
-    "untracked_files": 9,
+    "untracked_files": 7,
     "top_changed_paths": [
-      "  14 docs",
+      "  12 docs",
       "   1 scripts",
       "   1 README_files",
       "   1 README.html"
@@ -48,9 +48,7 @@
       "?? docs/progress_history/20260222T054001Z.json",
       "?? docs/progress_history/20260222T054001Z.md",
       "?? docs/progress_history/20260222T054150Z.json",
-      "?? docs/progress_history/20260222T054150Z.md",
-      "?? docs/progress_history/20260222T054250Z.json",
-      "?? docs/progress_history/20260222T054250Z.md"
+      "?? docs/progress_history/20260222T054150Z.md"
     ]
   },
   "validation": {
@@ -58,36 +56,27 @@
       "status": "PASS",
       "pass": 10,
       "fail": 0,
-      "duration_ms": 35566.755917
+      "duration_ms": 35582.559791
     },
     "backend_tests": {
       "status": "PASS",
       "pass": 33,
       "fail": 0,
-      "duration_ms": 623.722459
+      "duration_ms": 647.4815
     },
     "review_gate": {
       "status": "PASS",
       "tail": [
         "Review Gate Report",
-        "Round: monitor-20260222-134353",
+        "Round: monitor-20260222-134249",
         "Repo:  /Users/zhui/Desktop/cs/cloud-fullstack-docker",
         "PASS: review gate checks passed."
       ]
     },
     "compose_smoke": {
-      "status": "PASS",
+      "status": "SKIPPED",
       "tail": [
-        "[smoke] upload",
-        "[smoke] upload detail",
-        "[smoke] upload mapped rows page",
-        "[smoke] session upload list",
-        "[smoke] delete upload",
-        "[smoke] session upload list after delete",
-        "[smoke] upload again for bulk session delete",
-        "[smoke] delete session uploads",
-        "[smoke] session upload list after bulk delete",
-        "PASS: compose smoke checks passed."
+        "(not executed)"
       ]
     }
   },
@@ -113,9 +102,9 @@
   "blockers": [],
   "delta": {
     "since_previous_snapshot": {
-      "total_changed_files": 2,
+      "total_changed_files": 3,
       "staged_changes": 0,
-      "unstaged_changes": 0,
+      "unstaged_changes": 1,
       "untracked_files": 2,
       "blockers_added": [],
       "blockers_resolved": [],

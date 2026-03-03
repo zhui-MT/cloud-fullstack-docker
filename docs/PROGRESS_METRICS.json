@@ -1,0 +1,49 @@
+{
+  "generated_at_local": "2026-02-22 13:43:16 +0800",
+  "generated_at_utc": "2026-02-22T05:43:16Z",
+  "overall_status": {
+    "text": "CODE_HEALTHY",
+    "code": 1
+  },
+  "working_tree": {
+    "total_changed_files": 17,
+    "staged_changes": 0,
+    "unstaged_changes": 8,
+    "untracked_files": 9
+  },
+  "blockers": {
+    "total": 0,
+    "active": 0
+  },
+  "validation": {
+    "api_tests": {
+      "status": "PASS",
+      "code": 1,
+      "duration_ms": 35566.755917
+    },
+    "backend_tests": {
+      "status": "PASS",
+      "code": 1,
+      "duration_ms": 623.722459
+    },
+    "review_gate": {
+      "status": "PASS",
+      "code": 1
+    },
+    "compose_smoke": {
+      "status": "PASS",
+      "code": 1
+    }
+  },
+  "runtime": {
+    "docker_daemon": {
+      "status": "AVAILABLE",
+      "code": 1
+    },
+    "running_services_count": 6
+  },
+  "history": {
+    "snapshots_total": 8,
+    "pruned_count": 0
+  }
+}
