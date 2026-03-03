@@ -1,4 +1,4 @@
-const { ALGORITHM_REGISTRY } = require('./configRegistry');
+const { ALGORITHM_REGISTRY } = require('./config-registry');
 
 const STAGES = ['filtering', 'imputation', 'normalization', 'batch_correction'];
 

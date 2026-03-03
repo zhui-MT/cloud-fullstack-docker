@@ -1,5 +1,5 @@
 {
-  "name": "backend",
+  "name": "bioid-analytics-api",
   "version": "1.0.0",
   "description": "Dockerized fullstack backend",
   "main": "server.js",

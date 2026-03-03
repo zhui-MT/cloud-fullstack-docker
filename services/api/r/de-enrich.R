@@ -1,6 +1,6 @@
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) < 2) {
-  stop("usage: Rscript de_enrich.R <input.json> <output.json>")
+  stop("usage: Rscript de-enrich.R <input.json> <output.json>")
 }
 
 input_path <- args[[1]]

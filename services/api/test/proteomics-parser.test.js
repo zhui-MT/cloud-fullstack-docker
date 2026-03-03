@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
-const { parseProteomicsFile } = require('../proteomicsParser');
+const { parseProteomicsFile } = require('../proteomics-parser');
 
 function parseSample(fileName) {
   const p = path.join(__dirname, '..', 'samples', fileName);
@@ -10,7 +10,7 @@ function parseSample(fileName) {
 }
 
 test('detects FragPipe protein table and maps summary fields', () => {
-  const parsed = parseSample('fragpipe_protein.tsv');
+  const parsed = parseSample('fragpipe-protein.tsv');
   assert.equal(parsed.detected.sourceTool, 'FragPipe');
   assert.equal(parsed.detected.entityType, 'protein');
   assert.equal(parsed.summary.sampleCount, 2);
@@ -18,7 +18,7 @@ test('detects FragPipe protein table and maps summary fields', () => {
 });
 
 test('detects DIA-NN peptide table and maps summary fields', () => {
-  const parsed = parseSample('diann_peptide.tsv');
+  const parsed = parseSample('diann-peptide.tsv');
   assert.equal(parsed.detected.sourceTool, 'DIA-NN');
   assert.equal(parsed.detected.entityType, 'peptide');
   assert.equal(parsed.summary.sampleCount, 2);
@@ -27,7 +27,7 @@ test('detects DIA-NN peptide table and maps summary fields', () => {
 });
 
 test('detects MaxQuant protein table and maps summary fields', () => {
-  const parsed = parseSample('maxquant_protein.txt');
+  const parsed = parseSample('maxquant-protein.txt');
   assert.equal(parsed.detected.sourceTool, 'MaxQuant');
   assert.equal(parsed.detected.entityType, 'protein');
   assert.equal(parsed.summary.sampleCount, 2);

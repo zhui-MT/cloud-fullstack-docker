@@ -4,7 +4,7 @@ const {
   FsUploadBlobStore,
   S3UploadBlobStore,
   createDefaultUploadBlobStore,
-} = require('../src/uploadBlobStore');
+} = require('../src/upload-blob-store');
 
 function withEnv(overrides, fn) {
   const keys = Object.keys(overrides);

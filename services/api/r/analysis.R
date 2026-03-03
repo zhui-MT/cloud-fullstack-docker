@@ -466,6 +466,72 @@ run_limma_de <- function(d) {
     out
   }
 
+  build_qc <- function(mat_input, sample_table) {
+    pca_points <- list()
+    explained <- list(pc1 = 0, pc2 = 0)
+
+    pca_obj <- tryCatch({
+      stats::prcomp(t(mat_input), center = TRUE, scale. = TRUE)
+    }, error = function(e) NULL)
+
+    if (!is.null(pca_obj) && !is.null(pca_obj$x) && nrow(pca_obj$x) > 0) {
+      vars <- (pca_obj$sdev ^ 2)
+      total_var <- sum(vars)
+      if (is.finite(total_var) && total_var > 0) {
+        explained$pc1 <- round((vars[[1]] / total_var) * 100, 6)
+        if (length(vars) >= 2) {
+          explained$pc2 <- round((vars[[2]] / total_var) * 100, 6)
+        }
+      }
+
+      pca_frame <- data.frame(
+        sample_id = rownames(pca_obj$x),
+        pc1 = if ("PC1" %in% colnames(pca_obj$x)) as.numeric(pca_obj$x[, "PC1"]) else rep(0, nrow(pca_obj$x)),
+        pc2 = if ("PC2" %in% colnames(pca_obj$x)) as.numeric(pca_obj$x[, "PC2"]) else rep(0, nrow(pca_obj$x)),
+        stringsAsFactors = FALSE
+      )
+
+      pca_frame$group <- vapply(
+        pca_frame$sample_id,
+        function(sample_name) {
+          hit <- sample_table$group[sample_table$sample == sample_name]
+          if (length(hit) == 0) return("Unknown")
+          as.character(hit[[1]])
+        },
+        character(1)
+      )
+      pca_frame$loading <- rep(1, nrow(pca_frame))
+      pca_points <- rows_to_list(pca_frame[, c("sample_id", "group", "pc1", "pc2", "loading"), drop = FALSE])
+    }
+
+    cor_mat <- tryCatch({
+      stats::cor(mat_input, use = "pairwise.complete.obs")
+    }, error = function(e) matrix(0, nrow = ncol(mat_input), ncol = ncol(mat_input)))
+
+    if (!is.matrix(cor_mat) || nrow(cor_mat) == 0) {
+      cor_mat <- matrix(0, nrow = ncol(mat_input), ncol = ncol(mat_input))
+      colnames(cor_mat) <- colnames(mat_input)
+      rownames(cor_mat) <- colnames(mat_input)
+    }
+
+    cor_mat[is.na(cor_mat)] <- 0
+    cor_mat <- round(cor_mat, 6)
+    corr_rows <- lapply(seq_len(nrow(cor_mat)), function(i) as.numeric(cor_mat[i, ]))
+
+    list(
+      pca = list(
+        explained_variance = explained,
+        points = pca_points
+      ),
+      correlation = list(
+        labels = as.list(colnames(cor_mat)),
+        matrix = corr_rows
+      )
+    )
+  }
+
+  qc <- build_qc(mat, sample_df)
+
   list(
     de = list(
       summary = list(
@@ -475,7 +541,8 @@ run_limma_de <- function(d) {
       ),
       topTable = rows_to_list(tt[seq_len(min(nrow(tt), 50)), , drop = FALSE])
     ),
-    significantGenes = sig$gene
+    significantGenes = sig$gene,
+    qc = qc
   )
 }
 

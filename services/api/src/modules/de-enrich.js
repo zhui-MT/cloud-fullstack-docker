@@ -1,5 +1,5 @@
-const { makeDemoPayload } = require('../demoDataset');
-const { runRDeEnrich } = require('../rRunner');
+const { makeDemoPayload } = require('../demo-dataset');
+const { runRDeEnrich } = require('../r-runner');
 
 const SUPPORTED_ENGINES = ['limma', 'DEqMS', 'MSstats', 'SAM', 'RankProd'];
 
@@ -641,8 +641,8 @@ function runJsDe(prepared) {
     if (group === groupB) indexB.push(idx);
   });
 
-  if (indexA.length < 2 || indexB.length < 2) {
-    const err = new Error('need at least 2 replicates per group for DE fallback');
+  if (indexA.length < 1 || indexB.length < 1) {
+    const err = new Error('need at least 1 sample per group for DE fallback');
     err.code = 'INVALID_DESIGN';
     throw err;
   }

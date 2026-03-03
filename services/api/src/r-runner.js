@@ -72,7 +72,7 @@ async function runViaRemoteEngine(payload, appendLog) {
 }
 
 async function runViaLocalRscript(payload, appendLog) {
-  const scriptPath = path.resolve(__dirname, '../r/de_enrich.R');
+  const scriptPath = path.resolve(__dirname, '../r/de-enrich.R');
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'de-enrich-'));
   const inputPath = path.join(tempDir, 'input.json');
   const outputPath = path.join(tempDir, 'output.json');

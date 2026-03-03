@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { newDb } = require('pg-mem');
 const { createApp } = require('../server');
-const { InMemoryUploadBlobStore } = require('../src/uploadBlobStore');
+const { InMemoryUploadBlobStore } = require('../src/upload-blob-store');
 
 async function withServer(fn, options = {}) {
   const mem = newDb();
@@ -95,7 +95,7 @@ async function deleteSessionUploads(base, sessionId) {
 test('POST /api/session + POST /api/upload parses FragPipe protein sample', async () => {
   await withServer(async (base) => {
     const sessionId = await createSession(base, 'round2-fragpipe');
-    const body = await uploadSample(base, sessionId, 'fragpipe_protein.tsv');
+    const body = await uploadSample(base, sessionId, 'fragpipe-protein.tsv');
 
     assert.equal(body.detected.sourceTool, 'FragPipe');
     assert.equal(body.detected.entityType, 'protein');
@@ -118,7 +118,7 @@ test('POST /api/session + POST /api/upload parses FragPipe protein sample', asyn
 test('POST /api/session + POST /api/upload parses DIA-NN peptide sample', async () => {
   await withServer(async (base) => {
     const sessionId = await createSession(base, 'round2-diann');
-    const body = await uploadSample(base, sessionId, 'diann_peptide.tsv');
+    const body = await uploadSample(base, sessionId, 'diann-peptide.tsv');
 
     assert.equal(body.detected.sourceTool, 'DIA-NN');
     assert.equal(body.detected.entityType, 'peptide');
@@ -134,7 +134,7 @@ test('POST /api/session + POST /api/upload parses DIA-NN peptide sample', async 
 test('POST /api/session + POST /api/upload parses MaxQuant protein sample', async () => {
   await withServer(async (base) => {
     const sessionId = await createSession(base, 'round2-maxquant');
-    const body = await uploadSample(base, sessionId, 'maxquant_protein.txt');
+    const body = await uploadSample(base, sessionId, 'maxquant-protein.txt');
 
     assert.equal(body.detected.sourceTool, 'MaxQuant');
     assert.equal(body.detected.entityType, 'protein');
@@ -149,7 +149,7 @@ test('POST /api/session + POST /api/upload parses MaxQuant protein sample', asyn
 test('POST /api/upload accepts session_id field in multipart body', async () => {
   await withServer(async (base) => {
     const sessionId = await createSession(base, 'round2-upload-snake-case');
-    const body = await uploadSampleWithSnakeSession(base, sessionId, 'fragpipe_protein.tsv');
+    const body = await uploadSampleWithSnakeSession(base, sessionId, 'fragpipe-protein.tsv');
 
     assert.equal(body.sessionId, sessionId);
     assert.equal(body.detected.sourceTool, 'FragPipe');
@@ -160,7 +160,7 @@ test('POST /api/upload accepts session_id field in multipart body', async () => 
 test('GET /api/upload/:id returns persisted normalized rows and summary', async () => {
   await withServer(async (base) => {
     const sessionId = await createSession(base, 'round2-upload-detail');
-    const upload = await uploadSample(base, sessionId, 'diann_peptide.tsv');
+    const upload = await uploadSample(base, sessionId, 'diann-peptide.tsv');
     const detail = await fetchUploadDetail(base, upload.uploadId);
 
     assert.equal(detail.uploadId, upload.uploadId);
@@ -185,7 +185,7 @@ test('GET /api/upload/:id returns persisted normalized rows and summary', async 
 test('GET /api/upload/:id/mapped-rows supports pagination', async () => {
   await withServer(async (base) => {
     const sessionId = await createSession(base, 'round2-upload-page');
-    const upload = await uploadSample(base, sessionId, 'diann_peptide.tsv');
+    const upload = await uploadSample(base, sessionId, 'diann-peptide.tsv');
 
     const page0 = await fetchMappedRowsPage(base, upload.uploadId, '?limit=1&offset=0');
     assert.equal(page0.total, 2);
@@ -203,8 +203,8 @@ test('GET /api/upload/:id/mapped-rows supports pagination', async () => {
 test('GET /api/session/:id/uploads lists uploads with pagination', async () => {
   await withServer(async (base) => {
     const sessionId = await createSession(base, 'round2-upload-list');
-    const up1 = await uploadSample(base, sessionId, 'fragpipe_protein.tsv');
-    const up2 = await uploadSample(base, sessionId, 'diann_peptide.tsv');
+    const up1 = await uploadSample(base, sessionId, 'fragpipe-protein.tsv');
+    const up2 = await uploadSample(base, sessionId, 'diann-peptide.tsv');
 
     const listResponse = await fetchSessionUploads(base, sessionId, '?limit=1&offset=0');
     assert.equal(listResponse.status, 200);
@@ -240,7 +240,7 @@ test('GET /api/session/:id/uploads returns 404 for unknown session', async () =>
 test('DELETE /api/upload/:id removes upload and updates session list', async () => {
   await withServer(async (base) => {
     const sessionId = await createSession(base, 'round2-upload-delete');
-    const upload = await uploadSample(base, sessionId, 'fragpipe_protein.tsv');
+    const upload = await uploadSample(base, sessionId, 'fragpipe-protein.tsv');
 
     const remove = await deleteUpload(base, upload.uploadId);
     assert.equal(remove.status, 200);
@@ -277,7 +277,7 @@ test('DELETE /api/upload/:id still deletes db row when blob delete fails', async
 
   await withServer(async (base) => {
     const sessionId = await createSession(base, 'round2-upload-delete-fallback');
-    const upload = await uploadSample(base, sessionId, 'diann_peptide.tsv');
+    const upload = await uploadSample(base, sessionId, 'diann-peptide.tsv');
     const remove = await deleteUpload(base, upload.uploadId);
     assert.equal(remove.status, 200);
 
@@ -294,8 +294,8 @@ test('DELETE /api/upload/:id still deletes db row when blob delete fails', async
 test('DELETE /api/session/:id/uploads removes all uploads in a session', async () => {
   await withServer(async (base) => {
     const sessionId = await createSession(base, 'round2-session-delete');
-    await uploadSample(base, sessionId, 'fragpipe_protein.tsv');
-    await uploadSample(base, sessionId, 'diann_peptide.tsv');
+    await uploadSample(base, sessionId, 'fragpipe-protein.tsv');
+    await uploadSample(base, sessionId, 'diann-peptide.tsv');
 
     const remove = await deleteSessionUploads(base, sessionId);
     assert.equal(remove.status, 200);
@@ -329,8 +329,8 @@ test('DELETE /api/session/:id/uploads deletes db rows even when blob delete fail
 
   await withServer(async (base) => {
     const sessionId = await createSession(base, 'round2-session-delete-fallback');
-    await uploadSample(base, sessionId, 'fragpipe_protein.tsv');
-    await uploadSample(base, sessionId, 'maxquant_protein.txt');
+    await uploadSample(base, sessionId, 'fragpipe-protein.tsv');
+    await uploadSample(base, sessionId, 'maxquant-protein.txt');
 
     const remove = await deleteSessionUploads(base, sessionId);
     assert.equal(remove.status, 200);
@@ -360,7 +360,7 @@ test('POST /api/upload falls back to db mode when blob save fails', async () => 
 
   await withServer(async (base) => {
     const sessionId = await createSession(base, 'round2-upload-fallback-save-fail');
-    const upload = await uploadSample(base, sessionId, 'fragpipe_protein.tsv');
+    const upload = await uploadSample(base, sessionId, 'fragpipe-protein.tsv');
 
     assert.equal(upload.storage.mode, 'db');
     assert.equal(upload.storage.key, null);
@@ -385,7 +385,7 @@ test('GET /api/upload/:id uses db fallback when blob read fails', async () => {
 
   await withServer(async (base) => {
     const sessionId = await createSession(base, 'round2-upload-fallback-read-fail');
-    const upload = await uploadSample(base, sessionId, 'diann_peptide.tsv');
+    const upload = await uploadSample(base, sessionId, 'diann-peptide.tsv');
     assert.equal(upload.storage.mode, 'blob');
 
     const detail = await fetchUploadDetail(base, upload.uploadId);

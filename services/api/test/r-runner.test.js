@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
 
-const { runRDeEnrich } = require('../src/rRunner');
+const { runRDeEnrich } = require('../src/r-runner');
 
 async function withMockREngine(handler, fn) {
   const server = http.createServer(handler);

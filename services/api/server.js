@@ -5,15 +5,18 @@ const multer = require('multer');
 const { Pool } = require('pg');
 require('dotenv').config();
 
-const { JobManager } = require('./src/jobManager');
-const { buildModuleRunners, SUPPORTED_ENGINES } = require('./src/modules/deEnrich');
-const { validateAndNormalizeConfig } = require('./src/configValidation');
-const { computeConfigHash, reproducibilityToken } = require('./src/configHash');
-const { PgConfigRepository, InMemoryConfigRepository } = require('./src/configRepository');
-const { diffConfigs } = require('./src/configDiff');
+const { JobManager } = require('./src/job-manager');
+const { buildModuleRunners, SUPPORTED_ENGINES } = require('./src/modules/de-enrich');
+const { validateAndNormalizeConfig } = require('./src/config-validation');
+const { computeConfigHash, reproducibilityToken } = require('./src/config-hash');
+const { PgConfigRepository, InMemoryConfigRepository } = require('./src/config-repository');
+const { AnalysisRunsRepository } = require('./src/analysis-runs-repository');
+const { diffConfigs } = require('./src/config-diff');
+const { buildAnalysisRunViews } = require('./src/analysis-run-view-builder');
 const { buildArtifacts, createAnalysisBundle, hashString } = require('./lib/analysis');
-const { parseProteomicsFile } = require('./proteomicsParser');
-const { createDefaultUploadBlobStore } = require('./src/uploadBlobStore');
+const { parseProteomicsFile } = require('./proteomics-parser');
+const { AnalysisPayloadValidationError, uploadToAnalysisPayload } = require('./src/upload-to-analysis-payload');
+const { createDefaultUploadBlobStore } = require('./src/upload-blob-store');
 
 function createDbPool() {
   return new Pool({
@@ -30,8 +33,12 @@ function buildArtifactId(configRev, kind, format, generatedAt) {
   return `art_${hashString(base).toString(16)}`;
 }
 
+function computeRequestHash(payload) {
+  return crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+}
+
 function toArtifactMeta(artifact) {
-  return {
+  const meta = {
     artifact_id: artifact.id,
     kind: artifact.kind,
     format: artifact.format,
@@ -39,6 +46,10 @@ function toArtifactMeta(artifact) {
     config_rev: artifact.configRev,
     generated_at: artifact.generatedAt,
   };
+  if (artifact.metadata) {
+    meta.metadata = artifact.metadata;
+  }
+  return meta;
 }
 
 function pickSessionId(payload = {}) {
@@ -51,15 +62,38 @@ function pickSessionId(payload = {}) {
   return '';
 }
 
+function pickUploadId(payload = {}) {
+  const raw = payload.uploadId ?? payload.upload_id;
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    return null;
+  }
+  return parsed;
+}
+
+function pickConfigTag(payload = {}) {
+  const raw = payload.config_tag ?? payload.configTag;
+  if (typeof raw !== 'string') {
+    return '';
+  }
+  return raw.trim();
+}
+
+function isTerminalRunStatus(status) {
+  return status === 'succeeded' || status === 'failed' || status === 'canceled';
+}
+
 function createApp(options = {}) {
   const pool = options.pool || createDbPool();
   const configRepository =
     options.configRepository || (typeof pool.connect === 'function' ? new PgConfigRepository(pool) : new InMemoryConfigRepository());
+  const analysisRunsRepository = options.analysisRunsRepository || new AnalysisRunsRepository(pool);
   const uploadBlobStore = options.uploadBlobStore || createDefaultUploadBlobStore();
 
   const app = express();
   const jobManager = new JobManager({ moduleRunners: buildModuleRunners() });
   const artifactStore = new Map();
+  const runPayloadCache = new Map();
   const upload = multer({
     storage: multer.memoryStorage(),
     limits: {
@@ -111,6 +145,70 @@ function createApp(options = {}) {
       await pool.query(`ALTER TABLE uploads ADD COLUMN IF NOT EXISTS mapped_rows JSONB NOT NULL DEFAULT '[]'::jsonb`);
       await pool.query(`ALTER TABLE uploads ADD COLUMN IF NOT EXISTS mapped_rows_storage TEXT NOT NULL DEFAULT 'db'`);
       await pool.query(`ALTER TABLE uploads ADD COLUMN IF NOT EXISTS mapped_rows_key TEXT`);
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS session_configs (
+          id BIGSERIAL PRIMARY KEY,
+          session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+          config_rev INTEGER NOT NULL,
+          config_hash TEXT NOT NULL,
+          config_json JSONB NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          UNIQUE(session_id, config_rev),
+          UNIQUE(session_id, config_hash)
+        )
+      `);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_session_configs_session_rev ON session_configs(session_id, config_rev DESC)`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_session_configs_session_hash ON session_configs(session_id, config_hash)`);
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS analysis_runs (
+          id BIGSERIAL PRIMARY KEY,
+          session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+          upload_id BIGINT NOT NULL REFERENCES uploads(id) ON DELETE CASCADE,
+          config_rev INTEGER,
+          config_tag TEXT,
+          config_hash TEXT,
+          status TEXT NOT NULL,
+          engine TEXT NOT NULL,
+          de_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+          enrichment_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+          sample_groups_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+          request_hash TEXT NOT NULL,
+          config_trace_json JSONB,
+          runtime_json JSONB,
+          result_json JSONB,
+          views_json JSONB,
+          artifact_index JSONB NOT NULL DEFAULT '{}'::jsonb,
+          error_json JSONB,
+          job_id TEXT,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          started_at TIMESTAMPTZ,
+          finished_at TIMESTAMPTZ,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await pool.query(`ALTER TABLE analysis_runs ADD COLUMN IF NOT EXISTS config_rev INTEGER`);
+      await pool.query(`ALTER TABLE analysis_runs ADD COLUMN IF NOT EXISTS config_tag TEXT`);
+      await pool.query(`ALTER TABLE analysis_runs ADD COLUMN IF NOT EXISTS config_hash TEXT`);
+      await pool.query(`ALTER TABLE analysis_runs ADD COLUMN IF NOT EXISTS de_json JSONB NOT NULL DEFAULT '{}'::jsonb`);
+      await pool.query(`ALTER TABLE analysis_runs ADD COLUMN IF NOT EXISTS enrichment_json JSONB NOT NULL DEFAULT '{}'::jsonb`);
+      await pool.query(`ALTER TABLE analysis_runs ADD COLUMN IF NOT EXISTS sample_groups_json JSONB NOT NULL DEFAULT '{}'::jsonb`);
+      await pool.query(`ALTER TABLE analysis_runs ADD COLUMN IF NOT EXISTS request_hash TEXT`);
+      await pool.query(`ALTER TABLE analysis_runs ADD COLUMN IF NOT EXISTS config_trace_json JSONB`);
+      await pool.query(`ALTER TABLE analysis_runs ADD COLUMN IF NOT EXISTS runtime_json JSONB`);
+      await pool.query(`ALTER TABLE analysis_runs ADD COLUMN IF NOT EXISTS result_json JSONB`);
+      await pool.query(`ALTER TABLE analysis_runs ADD COLUMN IF NOT EXISTS views_json JSONB`);
+      await pool.query(`ALTER TABLE analysis_runs ADD COLUMN IF NOT EXISTS artifact_index JSONB NOT NULL DEFAULT '{}'::jsonb`);
+      await pool.query(`ALTER TABLE analysis_runs ADD COLUMN IF NOT EXISTS error_json JSONB`);
+      await pool.query(`ALTER TABLE analysis_runs ADD COLUMN IF NOT EXISTS job_id TEXT`);
+      await pool.query(`ALTER TABLE analysis_runs ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ`);
+      await pool.query(`ALTER TABLE analysis_runs ADD COLUMN IF NOT EXISTS finished_at TIMESTAMPTZ`);
+      await pool.query(`ALTER TABLE analysis_runs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_analysis_runs_status_created_at ON analysis_runs(status, created_at DESC)`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_analysis_runs_session_id_created_at ON analysis_runs(session_id, created_at DESC)`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_analysis_runs_upload_id_created_at ON analysis_runs(upload_id, created_at DESC)`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_analysis_runs_artifact_index_gin ON analysis_runs USING GIN (artifact_index)`);
     })();
 
     try {
@@ -434,6 +532,109 @@ function createApp(options = {}) {
     return false;
   }
 
+  function buildAnalysisRunBinding(row) {
+    return {
+      sessionId: row.session_id,
+      uploadId: Number(row.upload_id),
+      config_rev: row.config_rev ?? null,
+      config_hash: row.config_hash || null,
+      config_tag: row.config_tag || null,
+    };
+  }
+
+  function toAnalysisRunResponse(row) {
+    return {
+      runId: Number(row.id),
+      status: row.status,
+      binding: buildAnalysisRunBinding(row),
+      runtime: row.runtime_json || null,
+      error: row.error_json || null,
+      result: row.result_json || null,
+    };
+  }
+
+  function registerViewArtifacts(options) {
+    const {
+      views,
+      generatedAt,
+      artifactMeta,
+      fileLabel,
+      configRevForArtifacts,
+      scopeKey,
+    } = options;
+    const runViews = {};
+    const artifactIndex = {};
+    for (const [kind, payload] of Object.entries(views)) {
+      const artifacts = buildArtifacts(kind, configRevForArtifacts, payload);
+      const csvId = buildArtifactId(`${scopeKey}:${fileLabel}`, kind, 'csv', generatedAt);
+      const svgId = buildArtifactId(`${scopeKey}:${fileLabel}`, kind, 'svg', generatedAt);
+      const pngId = buildArtifactId(`${scopeKey}:${fileLabel}`, kind, 'png-source', generatedAt);
+
+      artifactStore.set(csvId, {
+        id: csvId,
+        kind,
+        format: 'csv',
+        fileName: `${kind}-${fileLabel}.csv`,
+        configRev: configRevForArtifacts,
+        generatedAt,
+        contentType: 'text/csv; charset=utf-8',
+        body: artifacts.csv,
+        metadata: artifactMeta,
+      });
+
+      artifactStore.set(svgId, {
+        id: svgId,
+        kind,
+        format: 'svg',
+        fileName: `${kind}-${fileLabel}.svg`,
+        configRev: configRevForArtifacts,
+        generatedAt,
+        contentType: 'image/svg+xml; charset=utf-8',
+        body: artifacts.svg,
+        metadata: artifactMeta,
+      });
+
+      artifactStore.set(pngId, {
+        id: pngId,
+        kind,
+        format: 'png-source',
+        fileName: `${kind}-${fileLabel}.png`,
+        configRev: configRevForArtifacts,
+        generatedAt,
+        contentType: 'application/json; charset=utf-8',
+        body: JSON.stringify({
+          svg: artifacts.png_source_svg,
+          metadata: {
+            ...artifactMeta,
+            kind,
+          },
+        }),
+        metadata: artifactMeta,
+      });
+
+      runViews[kind] = {
+        data: payload,
+        artifact_meta: {
+          ...artifactMeta,
+          kind,
+        },
+        downloads: {
+          csv: `/api/artifacts/${csvId}/download`,
+          svg: `/api/artifacts/${svgId}/download`,
+          png: `/api/artifacts/${pngId}/png`,
+          meta: `/api/artifacts/${csvId}/meta`,
+        },
+      };
+
+      artifactIndex[kind] = {
+        csvId,
+        svgId,
+        pngId,
+      };
+    }
+    return { runViews, artifactIndex };
+  }
+
   app.get('/api/upload/:id', async (req, res) => {
     const uploadId = Number(req.params.id);
     if (!Number.isInteger(uploadId) || uploadId <= 0) {
@@ -677,6 +878,200 @@ function createApp(options = {}) {
       error: job.error,
       logs: job.logs,
     });
+  });
+
+  app.post('/api/analysis/run', async (req, res) => {
+    const payload = req.body || {};
+    const sessionId = pickSessionId(payload);
+    const uploadId = pickUploadId(payload);
+    const configTag = pickConfigTag(payload);
+    if (!sessionId) {
+      return res.status(400).json({ error: 'sessionId (or session_id) is required' });
+    }
+    if (!uploadId) {
+      return res.status(400).json({ error: 'uploadId (or upload_id) must be a positive integer' });
+    }
+
+    try {
+      await ensureUploadSchema();
+      const uploadResult = await pool.query(
+        `SELECT
+          id,
+          session_id,
+          sample_columns,
+          mapped_rows,
+          mapped_rows_storage,
+          mapped_rows_key
+        FROM uploads
+        WHERE id = $1`,
+        [uploadId]
+      );
+      const uploadRow = uploadResult.rows[0];
+      if (!uploadRow) {
+        return res.status(404).json({ error: `upload not found: ${uploadId}` });
+      }
+      if (uploadRow.session_id !== sessionId) {
+        return res.status(409).json({
+          error: `upload ${uploadId} does not belong to session ${sessionId}`,
+        });
+      }
+
+      const resolution = await resolveRunConfigResolution(configRepository, payload);
+      if (resolution.error) {
+        return res.status(resolution.error.status).json(resolution.error.body);
+      }
+
+      const mapped = await resolveMappedRows(uploadRow);
+      const analysisPayload = uploadToAnalysisPayload({
+        mappedRows: mapped.mappedRows,
+        sampleColumns: Array.isArray(uploadRow.sample_columns) ? uploadRow.sample_columns : [],
+        sampleGroups: payload.sampleGroups || payload.sample_groups || {},
+        de: payload.de || {},
+        enrichment: payload.enrichment || {},
+        engine: payload.engine,
+      });
+
+      const requestHash = computeRequestHash({
+        sessionId,
+        uploadId,
+        engine: analysisPayload.engine,
+        de: analysisPayload.de,
+        enrichment: analysisPayload.enrichment,
+        sampleGroups: analysisPayload.resolvedSampleGroups,
+        config_rev: resolution.configTrace?.config_rev ?? null,
+        config_hash: resolution.configTrace?.config_hash || pickConfigHash(payload) || null,
+        config_tag: configTag || null,
+      });
+
+      const runRow = await analysisRunsRepository.createQueuedRun({
+        sessionId,
+        uploadId,
+        configRev: resolution.configTrace?.config_rev ?? null,
+        configTag: configTag || null,
+        configHash: resolution.configTrace?.config_hash || pickConfigHash(payload) || null,
+        status: 'queued',
+        engine: analysisPayload.engine,
+        de: analysisPayload.de,
+        enrichment: analysisPayload.enrichment,
+        sampleGroups: analysisPayload.resolvedSampleGroups,
+        requestHash,
+        configTrace: resolution.configTrace,
+      });
+
+      runPayloadCache.set(String(runRow.id), analysisPayload);
+
+      const job = jobManager.createJob('de-enrich', analysisPayload, {
+        configTrace: resolution.configTrace,
+        executionContext: {
+          config: resolution.config,
+          configTrace: resolution.configTrace,
+        },
+      });
+
+      const bound = await analysisRunsRepository.setJobBinding(runRow.id, {
+        jobId: job.id,
+        status: 'running',
+        startedAt: job.startedAt || new Date().toISOString(),
+      });
+
+      return res.status(202).json({
+        runId: Number(bound.id),
+        status: bound.status,
+        statusUrl: `/api/analysis/run/${bound.id}`,
+        createdAt: bound.created_at,
+        binding: buildAnalysisRunBinding(bound),
+      });
+    } catch (error) {
+      if (error instanceof AnalysisPayloadValidationError) {
+        return res.status(400).json({
+          error: error.message,
+          details: error.details,
+        });
+      }
+      return res.status(500).json({ error: 'failed to create analysis run', details: error.message });
+    }
+  });
+
+  app.get('/api/analysis/run/:runId', async (req, res) => {
+    const runId = Number(req.params.runId);
+    if (!Number.isInteger(runId) || runId <= 0) {
+      return res.status(400).json({ error: 'runId must be a positive integer' });
+    }
+
+    try {
+      await ensureUploadSchema();
+      let run = await analysisRunsRepository.getById(runId);
+      if (!run) {
+        return res.status(404).json({ error: `analysis run not found: ${runId}` });
+      }
+
+      if (!isTerminalRunStatus(run.status) && run.job_id) {
+        const job = jobManager.getJob(run.job_id);
+        if (job) {
+          run = await analysisRunsRepository.syncStatus(run.id, {
+            status: job.status,
+            startedAt: job.startedAt,
+            finishedAt: job.finishedAt,
+            runtime: job.result?.runtime || null,
+            error: job.error || null,
+          });
+
+          if (job.status === 'failed') {
+            run = await analysisRunsRepository.finalizeFailed(run.id, {
+              runtime: job.result?.runtime || null,
+              error: job.error || { code: 'ANALYSIS_FAILED', message: 'analysis job failed' },
+              finishedAt: job.finishedAt || null,
+            });
+          } else if (job.status === 'succeeded' && !run.result_json) {
+            const executionPayload = runPayloadCache.get(String(run.id)) || job.request || {};
+            const built = buildAnalysisRunViews({
+              runId: Number(run.id),
+              configRev: run.config_rev,
+              configTag: run.config_tag,
+              result: job.result || {},
+              executionPayload,
+            });
+            const fileLabel = run.config_tag || (run.config_rev !== null ? `rev-${run.config_rev}` : `run-${run.id}`);
+            const configRevForArtifacts = run.config_rev !== null ? String(run.config_rev) : fileLabel;
+            const { runViews, artifactIndex } = registerViewArtifacts({
+              views: built.views,
+              generatedAt: built.generatedAt,
+              artifactMeta: built.artifactMeta,
+              fileLabel,
+              configRevForArtifacts,
+              scopeKey: `run-${run.id}`,
+            });
+
+            const resultPayload = {
+              module: job.result?.module || 'de-enrich',
+              engine: run.engine,
+              de: job.result?.de || null,
+              significantGenes: job.result?.significantGenes || [],
+              enrichment: job.result?.enrichment || null,
+              config_trace: job.result?.config_trace || run.config_trace_json || null,
+              generated_at: built.generatedAt,
+              views: runViews,
+            };
+
+            run = await analysisRunsRepository.finalizeSucceeded(run.id, {
+              runtime: job.result?.runtime || null,
+              result: resultPayload,
+              views: built.views,
+              artifactIndex: {
+                generated_at: built.generatedAt,
+                items: artifactIndex,
+              },
+              finishedAt: job.finishedAt || null,
+            });
+            runPayloadCache.delete(String(run.id));
+          }
+        }
+      }
+
+      return res.json(toAnalysisRunResponse(run));
+    } catch (error) {
+      return res.status(500).json({ error: 'failed to load analysis run', details: error.message });
+    }
   });
 
   app.post('/api/config', async (req, res) => {

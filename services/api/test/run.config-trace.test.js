@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createApp } = require('../server');
-const { InMemoryConfigRepository } = require('../src/configRepository');
+const { InMemoryConfigRepository } = require('../src/config-repository');
 
 function makeValidConfig(overrides = {}) {
   return {
