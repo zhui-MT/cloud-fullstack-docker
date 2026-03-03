@@ -5,16 +5,16 @@ import zhCN from './i18n/zh-cn'
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000'
 const ACCEPTED_EXTENSIONS = ['.tsv', '.txt', '.csv']
 const STORAGE_KEYS = {
-  sessionId: 'bioid-analytics.sessionId',
-  uploadId: 'bioid-analytics.uploadId',
-  runId: 'bioid-analytics.runId',
+  sessionId: 'cloud-fullstack-docker.sessionId',
+  uploadId: 'cloud-fullstack-docker.uploadId',
+  runId: 'cloud-fullstack-docker.runId',
 }
 const LEGACY_STORAGE_KEYS = {
   sessionId: 'bioid.sessionId',
   uploadId: 'bioid.uploadId',
   runId: 'bioid.runId',
 }
-const STORAGE_MIGRATION_KEY = 'bioid-analytics.storage.migrated.v1'
+const STORAGE_MIGRATION_KEY = 'cloud-fullstack-docker.storage.migrated.v1'
 const VIEW_ORDER = ['pca', 'correlation', 'volcano', 'enrichment']
 
 const CONTROL_KEYWORDS = ['control', 'ctrl', 'vehicle', 'mock', 'wt', 'normal', 'untreated', 'untreat', 'blank', 'sham']

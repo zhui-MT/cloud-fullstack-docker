@@ -8,7 +8,7 @@
 
 - [x] 镜像可构建（`r-engine`）
   - Command: `docker compose --env-file .env.example build r-engine`
-  - Result: `Successfully built b5fdf01bd8c2`, `Successfully tagged bioid-analytics-r-engine:latest`
+  - Result: `Successfully built b5fdf01bd8c2`, `Successfully tagged cloud-fullstack-docker-r-engine:latest`
 - [x] 服务可启动并健康
   - Command: `docker compose --env-file .env.example up -d --no-build`
   - Evidence: `docker compose --env-file .env.example ps` 显示 `frontend/api/postgres/redis/r-engine/minio` 全部 `healthy`
@@ -53,7 +53,7 @@
 1. 发布前打 tag（示例）：
 
 ```bash
-cd /Users/zhui/Desktop/cs/bioid-analytics
+cd /Users/zhui/Desktop/cs/cloud-fullstack-docker
 git tag release/round5
 ```
 

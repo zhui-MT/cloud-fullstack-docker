@@ -18,8 +18,8 @@
 - 新增 `docs/devlog.md`，作为后续迭代记录入口。
 
 ### Changed Files
-- `bioid-analytics/README.md`
-- `bioid-analytics/docs/devlog.md`
+- `cloud-fullstack-docker/README.md`
+- `cloud-fullstack-docker/docs/devlog.md`
 
 ### Validation
 - 文档文件存在并可读取。
@@ -48,16 +48,16 @@
 - 更新 `README.md`，加入六服务架构与启动/验证说明。
 
 ### Changed Files
-- `bioid-analytics/docker-compose.yml`
-- `bioid-analytics/.env.example`
-- `bioid-analytics/README.md`
-- `bioid-analytics/api/package.json`
-- `bioid-analytics/api/server.js`
-- `bioid-analytics/api/Dockerfile`
-- `bioid-analytics/api/.dockerignore`
-- `bioid-analytics/services/r-engine/Dockerfile`
-- `bioid-analytics/services/r-engine/app.R`
-- `bioid-analytics/docs/devlog.md`
+- `cloud-fullstack-docker/docker-compose.yml`
+- `cloud-fullstack-docker/.env.example`
+- `cloud-fullstack-docker/README.md`
+- `cloud-fullstack-docker/api/package.json`
+- `cloud-fullstack-docker/api/server.js`
+- `cloud-fullstack-docker/api/Dockerfile`
+- `cloud-fullstack-docker/api/.dockerignore`
+- `cloud-fullstack-docker/services/r-engine/Dockerfile`
+- `cloud-fullstack-docker/services/r-engine/app.R`
+- `cloud-fullstack-docker/docs/devlog.md`
 
 ### Validation
 - `docker compose --env-file .env.example config` 通过（语法与变量注入正确）。
@@ -260,25 +260,25 @@ Response (`200`, 节选):
 ```
 
 ### Changed Files
-- `bioid-analytics/services/api/server.js`
-- `bioid-analytics/services/api/src/uploadBlobStore.js`
-- `bioid-analytics/services/api/proteomicsParser.js`
-- `bioid-analytics/services/api/samples/fragpipe-protein.tsv`
-- `bioid-analytics/services/api/samples/diann-peptide.tsv`
-- `bioid-analytics/services/api/samples/maxquant-protein.txt`
-- `bioid-analytics/services/api/test/upload.api.test.js`
-- `bioid-analytics/services/api/test/proteomicsParser.test.js`
-- `bioid-analytics/services/api/test/uploadBlobStore.test.js`
-- `bioid-analytics/.env.example`
-- `bioid-analytics/docker-compose.yml`
-- `bioid-analytics/scripts/minio-init.sh`
-- `bioid-analytics/scripts/compose-smoke.sh`
-- `bioid-analytics/README.md`
-- `bioid-analytics/db/init.sql`
-- `bioid-analytics/docs/devlog.md`
+- `cloud-fullstack-docker/services/api/server.js`
+- `cloud-fullstack-docker/services/api/src/uploadBlobStore.js`
+- `cloud-fullstack-docker/services/api/proteomicsParser.js`
+- `cloud-fullstack-docker/services/api/samples/fragpipe-protein.tsv`
+- `cloud-fullstack-docker/services/api/samples/diann-peptide.tsv`
+- `cloud-fullstack-docker/services/api/samples/maxquant-protein.txt`
+- `cloud-fullstack-docker/services/api/test/upload.api.test.js`
+- `cloud-fullstack-docker/services/api/test/proteomicsParser.test.js`
+- `cloud-fullstack-docker/services/api/test/uploadBlobStore.test.js`
+- `cloud-fullstack-docker/.env.example`
+- `cloud-fullstack-docker/docker-compose.yml`
+- `cloud-fullstack-docker/scripts/minio-init.sh`
+- `cloud-fullstack-docker/scripts/compose-smoke.sh`
+- `cloud-fullstack-docker/README.md`
+- `cloud-fullstack-docker/db/init.sql`
+- `cloud-fullstack-docker/docs/devlog.md`
 
 ### Validation
-- 执行：`cd bioid-analytics/backend && npm test`
+- 执行：`cd cloud-fullstack-docker/backend && npm test`
 - 结果：`33 passed, 0 failed`
 - 执行：`docker compose --env-file .env.example config`
 - 结果：通过（包含 `minio-init` + `api` 的 blob 存储环境注入）。
@@ -363,19 +363,19 @@ Response (`200`, 节选):
   - 固定 seed 同配置可复现测试（同 hash、同 rev、同 token）
 
 ### Changed Files
-- `bioid-analytics/services/api/server.js`
-- `bioid-analytics/services/api/src/configRegistry.js`
-- `bioid-analytics/services/api/src/configValidation.js`
-- `bioid-analytics/services/api/src/configHash.js`
-- `bioid-analytics/services/api/src/configRepository.js`
-- `bioid-analytics/services/api/test/config.api.test.js`
-- `bioid-analytics/services/api/package.json`
-- `bioid-analytics/db/init.sql`
-- `bioid-analytics/docs/devlog.md`
+- `cloud-fullstack-docker/services/api/server.js`
+- `cloud-fullstack-docker/services/api/src/configRegistry.js`
+- `cloud-fullstack-docker/services/api/src/configValidation.js`
+- `cloud-fullstack-docker/services/api/src/configHash.js`
+- `cloud-fullstack-docker/services/api/src/configRepository.js`
+- `cloud-fullstack-docker/services/api/test/config.api.test.js`
+- `cloud-fullstack-docker/services/api/package.json`
+- `cloud-fullstack-docker/db/init.sql`
+- `cloud-fullstack-docker/docs/devlog.md`
 
 ### Validation
 执行命令：
-- `cd bioid-analytics/backend && npm test`
+- `cd cloud-fullstack-docker/backend && npm test`
 
 结果：
 - `POST /api/config blocks illegal params` 通过
@@ -401,9 +401,9 @@ Response (`200`, 节选):
 - 新增 `docs/review-log.md`（每轮审查记录模板）。
 
 ### Changed Files
-- `bioid-analytics/docs/review-protocol.md`
-- `bioid-analytics/docs/review-log.md`
-- `bioid-analytics/docs/devlog.md`
+- `cloud-fullstack-docker/docs/review-protocol.md`
+- `cloud-fullstack-docker/docs/review-log.md`
+- `cloud-fullstack-docker/docs/devlog.md`
 
 ### Notes
 - 当前目录不是 Git 仓库，后续审查建议优先提供 patch/diff 进行精确核查。
@@ -421,13 +421,13 @@ Response (`200`, 节选):
 - 更新 `README.md` 与 `docs/review-protocol.md` 的使用说明。
 
 ### Changed Files
-- `bioid-analytics/scripts/review-gate.sh`
-- `bioid-analytics/scripts/vc-snapshot.sh`
-- `bioid-analytics/scripts/vc-rollback.sh`
-- `bioid-analytics/docs/version-control.md`
-- `bioid-analytics/docs/review-protocol.md`
-- `bioid-analytics/README.md`
-- `bioid-analytics/docs/devlog.md`
+- `cloud-fullstack-docker/scripts/review-gate.sh`
+- `cloud-fullstack-docker/scripts/vc-snapshot.sh`
+- `cloud-fullstack-docker/scripts/vc-rollback.sh`
+- `cloud-fullstack-docker/docs/version-control.md`
+- `cloud-fullstack-docker/docs/review-protocol.md`
+- `cloud-fullstack-docker/README.md`
+- `cloud-fullstack-docker/docs/devlog.md`
 
 ## Round 4
 
@@ -456,19 +456,19 @@ Response (`200`, 节选):
 - 新增验证脚本：`services/api/scripts/e2e-round4.sh`。
 
 ### Changed Files
-- `bioid-analytics/services/api/server.js`
-- `bioid-analytics/services/api/src/jobManager.js`
-- `bioid-analytics/services/api/src/modules/deEnrich.js`
-- `bioid-analytics/services/api/src/rRunner.js`
-- `bioid-analytics/services/api/src/demoDataset.js`
-- `bioid-analytics/services/api/r/de-enrich.R`
-- `bioid-analytics/services/api/scripts/e2e-round4.sh`
-- `bioid-analytics/docs/devlog.md`
+- `cloud-fullstack-docker/services/api/server.js`
+- `cloud-fullstack-docker/services/api/src/jobManager.js`
+- `cloud-fullstack-docker/services/api/src/modules/deEnrich.js`
+- `cloud-fullstack-docker/services/api/src/rRunner.js`
+- `cloud-fullstack-docker/services/api/src/demoDataset.js`
+- `cloud-fullstack-docker/services/api/r/de-enrich.R`
+- `cloud-fullstack-docker/services/api/scripts/e2e-round4.sh`
+- `cloud-fullstack-docker/docs/devlog.md`
 
 ### Validation
 执行命令：
-- `cd bioid-analytics/backend && npm run start`
-- `cd bioid-analytics && services/api/scripts/e2e-round4.sh`
+- `cd cloud-fullstack-docker/backend && npm run start`
+- `cd cloud-fullstack-docker && services/api/scripts/e2e-round4.sh`
 
 端到端任务关键返回（`module=de-enrich`, `engine=limma`）：
 - job：`status=succeeded`
@@ -526,18 +526,18 @@ Response (`200`, 节选):
 - 更新 README 为最终运行说明，并加入发布检查清单（可部署/可复现/可回滚）。
 
 ### Changed Files
-- `bioid-analytics/services/api/server.js`
-- `bioid-analytics/services/api/lib/analysis.js`
-- `bioid-analytics/services/api/src/configValidation.js`
-- `bioid-analytics/services/api/scripts/regression.js`
-- `bioid-analytics/services/api/scripts/performance.js`
-- `bioid-analytics/services/api/scripts/generate-test-summary.js`
-- `bioid-analytics/services/api/package.json`
-- `bioid-analytics/services/frontend/src/App.jsx`
-- `bioid-analytics/services/frontend/src/App.css`
-- `bioid-analytics/docs/round5-test-summary.md`
-- `bioid-analytics/README.md`
-- `bioid-analytics/docs/devlog.md`
+- `cloud-fullstack-docker/services/api/server.js`
+- `cloud-fullstack-docker/services/api/lib/analysis.js`
+- `cloud-fullstack-docker/services/api/src/configValidation.js`
+- `cloud-fullstack-docker/services/api/scripts/regression.js`
+- `cloud-fullstack-docker/services/api/scripts/performance.js`
+- `cloud-fullstack-docker/services/api/scripts/generate-test-summary.js`
+- `cloud-fullstack-docker/services/api/package.json`
+- `cloud-fullstack-docker/services/frontend/src/App.jsx`
+- `cloud-fullstack-docker/services/frontend/src/App.css`
+- `cloud-fullstack-docker/docs/round5-test-summary.md`
+- `cloud-fullstack-docker/README.md`
+- `cloud-fullstack-docker/docs/devlog.md`
 
 ### Validation
 执行时间：2026-02-21
@@ -587,14 +587,14 @@ Response (`200`, 节选):
 - 新增自动化测试：`services/api/test/rRunner.test.js`（mock r-engine 验证远程路径）。
 
 ### Changed Files
-- `bioid-analytics/services/r-engine/analysis.R`
-- `bioid-analytics/services/r-engine/app.R`
-- `bioid-analytics/services/r-engine/Dockerfile`
-- `bioid-analytics/services/api/src/rRunner.js`
-- `bioid-analytics/services/api/src/modules/deEnrich.js`
-- `bioid-analytics/services/api/scripts/e2e-round4.sh`
-- `bioid-analytics/services/api/test/rRunner.test.js`
-- `bioid-analytics/docs/devlog.md`
+- `cloud-fullstack-docker/services/r-engine/analysis.R`
+- `cloud-fullstack-docker/services/r-engine/app.R`
+- `cloud-fullstack-docker/services/r-engine/Dockerfile`
+- `cloud-fullstack-docker/services/api/src/rRunner.js`
+- `cloud-fullstack-docker/services/api/src/modules/deEnrich.js`
+- `cloud-fullstack-docker/services/api/scripts/e2e-round4.sh`
+- `cloud-fullstack-docker/services/api/test/rRunner.test.js`
+- `cloud-fullstack-docker/docs/devlog.md`
 
 ### Validation
 执行时间：2026-02-21
@@ -604,7 +604,7 @@ Response (`200`, 节选):
 - 结果：`7 passed, 0 failed`（包含 `runRDeEnrich uses remote r-engine when R_ENGINE_URL is set`）
 
 2) 端到端（本机无 Rscript 场景）：
-- 命令：`cd bioid-analytics && services/api/scripts/e2e-round4.sh`
+- 命令：`cd cloud-fullstack-docker && services/api/scripts/e2e-round4.sh`
 - 结果：`status=succeeded`，`runtime=JS_FALLBACK`（符合预期，因本机缺 `Rscript`）
 
 3) 端到端（mock r-engine 场景）：
@@ -647,15 +647,15 @@ Response (`200`, 节选):
   - 新增 revision 历史与 diff 接口测试，验证 revision 递增与关键字段变更（`normalization.algorithm`）
 
 ### Changed Files
-- `bioid-analytics/services/api/src/configRepository.js`
-- `bioid-analytics/services/api/src/configDiff.js`
-- `bioid-analytics/services/api/server.js`
-- `bioid-analytics/services/api/test/config.api.test.js`
-- `bioid-analytics/docs/devlog.md`
+- `cloud-fullstack-docker/services/api/src/configRepository.js`
+- `cloud-fullstack-docker/services/api/src/configDiff.js`
+- `cloud-fullstack-docker/services/api/server.js`
+- `cloud-fullstack-docker/services/api/test/config.api.test.js`
+- `cloud-fullstack-docker/docs/devlog.md`
 
 ### Validation
 执行命令：
-- `cd bioid-analytics/backend && npm test`
+- `cd cloud-fullstack-docker/backend && npm test`
 
 结果：
 - `10 passed, 0 failed`
@@ -690,24 +690,24 @@ Response (`200`, 节选):
   - `getConfigByHash(sessionId, configHash)`（PG + InMemory 实现）
 
 ### Changed Files
-- `bioid-analytics/services/api/server.js`
-- `bioid-analytics/services/api/src/jobManager.js`
-- `bioid-analytics/services/api/src/configRepository.js`
-- `bioid-analytics/services/api/test/run.config-trace.test.js`
-- `bioid-analytics/docs/devlog.md`
+- `cloud-fullstack-docker/services/api/server.js`
+- `cloud-fullstack-docker/services/api/src/jobManager.js`
+- `cloud-fullstack-docker/services/api/src/configRepository.js`
+- `cloud-fullstack-docker/services/api/test/run.config-trace.test.js`
+- `cloud-fullstack-docker/docs/devlog.md`
 
 ### Validation
 执行时间：2026-02-21
 
 1) 单测：
-- 命令：`cd bioid-analytics/backend && npm test`
+- 命令：`cd cloud-fullstack-docker/backend && npm test`
 - 结果：`15 passed, 0 failed`
 - 新增覆盖：
   - `POST /api/run/:module binds latest config trace from session`
   - `POST /api/run/:module supports explicit config_rev/config_hash binding and rejects mismatch`
 
 2) E2E 回归（兼容性）：
-- 命令：`cd bioid-analytics/backend && ./scripts/e2e-round4.sh`
+- 命令：`cd cloud-fullstack-docker/backend && ./scripts/e2e-round4.sh`
 - 结果：任务 `succeeded`，`runtime=JS_FALLBACK`，未带配置参数时行为保持兼容。
 
 ### Risks / Open Questions
@@ -740,13 +740,13 @@ Response (`200`, 节选):
   - 证明配置版本已影响执行结果
 
 ### Changed Files
-- `bioid-analytics/services/api/src/modules/deEnrich.js`
-- `bioid-analytics/services/api/test/run.config-preprocessing.test.js`
-- `bioid-analytics/docs/devlog.md`
+- `cloud-fullstack-docker/services/api/src/modules/deEnrich.js`
+- `cloud-fullstack-docker/services/api/test/run.config-preprocessing.test.js`
+- `cloud-fullstack-docker/docs/devlog.md`
 
 ### Validation
 执行命令：
-- `cd bioid-analytics/backend && npm test`
+- `cd cloud-fullstack-docker/backend && npm test`
 
 结果：
 - `17 passed, 0 failed`
@@ -788,14 +788,14 @@ Response (`200`, 节选):
     - 使用 mock `r-engine` 验证 `preprocessing_config` 与 `preprocessing` 已随请求透传到远端 R runtime
 
 ### Changed Files
-- `bioid-analytics/services/api/src/modules/deEnrich.js`
-- `bioid-analytics/services/api/test/run.config-preprocessing.test.js`
-- `bioid-analytics/services/api/test/run.r-preprocess-passthrough.test.js`
-- `bioid-analytics/docs/devlog.md`
+- `cloud-fullstack-docker/services/api/src/modules/deEnrich.js`
+- `cloud-fullstack-docker/services/api/test/run.config-preprocessing.test.js`
+- `cloud-fullstack-docker/services/api/test/run.r-preprocess-passthrough.test.js`
+- `cloud-fullstack-docker/docs/devlog.md`
 
 ### Validation
 执行命令：
-- `cd bioid-analytics/backend && npm test`
+- `cd cloud-fullstack-docker/backend && npm test`
 
 结果：
 - `23 passed, 0 failed`
@@ -832,16 +832,16 @@ Response (`200`, 节选):
   - 远端 r-engine 透传验证增强（验证 `preprocessing` 摘要也透传）
 
 ### Changed Files
-- `bioid-analytics/services/r-engine/analysis.R`
-- `bioid-analytics/services/api/r/analysis.R`
-- `bioid-analytics/services/api/r/de-enrich.R`
-- `bioid-analytics/services/api/test/run.config-preprocessing.test.js`
-- `bioid-analytics/services/api/test/run.r-preprocess-passthrough.test.js`
-- `bioid-analytics/docs/devlog.md`
+- `cloud-fullstack-docker/services/r-engine/analysis.R`
+- `cloud-fullstack-docker/services/api/r/analysis.R`
+- `cloud-fullstack-docker/services/api/r/de-enrich.R`
+- `cloud-fullstack-docker/services/api/test/run.config-preprocessing.test.js`
+- `cloud-fullstack-docker/services/api/test/run.r-preprocess-passthrough.test.js`
+- `cloud-fullstack-docker/docs/devlog.md`
 
 ### Validation
 执行命令：
-- `cd bioid-analytics/backend && npm test`
+- `cd cloud-fullstack-docker/backend && npm test`
 
 结果：
 - `26 passed, 0 failed`
@@ -876,9 +876,9 @@ Response (`200`, 节选):
   - 本地可通过 `SKIP_API=1` 做轻量 CI 风格验证
 
 ### Changed Files
-- `bioid-analytics/.dockerignore`
-- `bioid-analytics/services/api/test/r.analysis.source.test.js`
-- `bioid-analytics/docs/devlog.md`
+- `cloud-fullstack-docker/.dockerignore`
+- `cloud-fullstack-docker/services/api/test/r.analysis.source.test.js`
+- `cloud-fullstack-docker/docs/devlog.md`
 
 ### Validation
 执行时间：2026-02-21
@@ -948,12 +948,12 @@ Response (`200`, 节选):
 - 更新 `docs/review-protocol.md` 与 `docs/version-control.md`，纳入 compose smoke 检查。
 
 ### Changed Files
-- `bioid-analytics/docker-compose.yml`
-- `bioid-analytics/scripts/compose-smoke.sh`
-- `bioid-analytics/README.md`
-- `bioid-analytics/docs/review-protocol.md`
-- `bioid-analytics/docs/version-control.md`
-- `bioid-analytics/docs/devlog.md`
+- `cloud-fullstack-docker/docker-compose.yml`
+- `cloud-fullstack-docker/scripts/compose-smoke.sh`
+- `cloud-fullstack-docker/README.md`
+- `cloud-fullstack-docker/docs/review-protocol.md`
+- `cloud-fullstack-docker/docs/version-control.md`
+- `cloud-fullstack-docker/docs/devlog.md`
 
 ## Round 7
 
@@ -983,15 +983,15 @@ Response (`200`, 节选):
 - `api/package.json` 新增 `npm test`。
 
 ### Changed Files
-- `bioid-analytics/api/server.js`
-- `bioid-analytics/api/package.json`
-- `bioid-analytics/api/src/jobManager.js`
-- `bioid-analytics/api/src/demoDataset.js`
-- `bioid-analytics/api/src/rRunner.js`
-- `bioid-analytics/api/src/modules/deEnrich.js`
-- `bioid-analytics/api/test/deEnrich.api.test.js`
-- `bioid-analytics/api/scripts/e2e-round4.sh`
-- `bioid-analytics/docs/devlog.md`
+- `cloud-fullstack-docker/api/server.js`
+- `cloud-fullstack-docker/api/package.json`
+- `cloud-fullstack-docker/api/src/jobManager.js`
+- `cloud-fullstack-docker/api/src/demoDataset.js`
+- `cloud-fullstack-docker/api/src/rRunner.js`
+- `cloud-fullstack-docker/api/src/modules/deEnrich.js`
+- `cloud-fullstack-docker/api/test/deEnrich.api.test.js`
+- `cloud-fullstack-docker/api/scripts/e2e-round4.sh`
+- `cloud-fullstack-docker/docs/devlog.md`
 
 ### Validation
 执行时间：2026-02-21
@@ -1003,7 +1003,7 @@ Response (`200`, 节选):
   - `DEqMS is exposed but not implemented in api service`
 
 2) `api` 端到端（无 R_ENGINE_URL）
-- 命令：`cd bioid-analytics && api/scripts/e2e-round4.sh`
+- 命令：`cd cloud-fullstack-docker && api/scripts/e2e-round4.sh`
 - 结果：`status=succeeded`, `runtime=JS_FALLBACK`, `significantGenes=14`
 
 3) `api` 端到端（远程 R 通道，mock r-engine）
@@ -1063,14 +1063,14 @@ Response (`200`, 节选):
   - 测试场景固定 `queueMode: memory`，避免依赖外部 Redis。
 
 ### Changed Files
-- `bioid-analytics/api/src/jobManager.js`
-- `bioid-analytics/api/server.js`
-- `bioid-analytics/api/package.json`
-- `bioid-analytics/api/package-lock.json`
-- `bioid-analytics/api/test/deEnrich.api.test.js`
-- `bioid-analytics/docker-compose.yml`
-- `bioid-analytics/.env.example`
-- `bioid-analytics/docs/devlog.md`
+- `cloud-fullstack-docker/api/src/jobManager.js`
+- `cloud-fullstack-docker/api/server.js`
+- `cloud-fullstack-docker/api/package.json`
+- `cloud-fullstack-docker/api/package-lock.json`
+- `cloud-fullstack-docker/api/test/deEnrich.api.test.js`
+- `cloud-fullstack-docker/docker-compose.yml`
+- `cloud-fullstack-docker/.env.example`
+- `cloud-fullstack-docker/docs/devlog.md`
 
 ### Validation
 执行时间：2026-02-21
@@ -1145,15 +1145,15 @@ Response (`200`, 节选):
   - `GET /api/modules` 返回 `queue.mode=memory-fallback` 状态
 
 ### Changed Files
-- `bioid-analytics/api/src/jobStore.js`
-- `bioid-analytics/api/src/jobManager.js`
-- `bioid-analytics/api/server.js`
-- `bioid-analytics/api/test/deEnrich.api.test.js`
-- `bioid-analytics/api/scripts/e2e-round4.sh`
-- `bioid-analytics/db/init.sql`
-- `bioid-analytics/.env.example`
-- `bioid-analytics/docker-compose.yml`
-- `bioid-analytics/docs/devlog.md`
+- `cloud-fullstack-docker/api/src/jobStore.js`
+- `cloud-fullstack-docker/api/src/jobManager.js`
+- `cloud-fullstack-docker/api/server.js`
+- `cloud-fullstack-docker/api/test/deEnrich.api.test.js`
+- `cloud-fullstack-docker/api/scripts/e2e-round4.sh`
+- `cloud-fullstack-docker/db/init.sql`
+- `cloud-fullstack-docker/.env.example`
+- `cloud-fullstack-docker/docker-compose.yml`
+- `cloud-fullstack-docker/docs/devlog.md`
 
 ### Validation
 执行时间：2026-02-21
@@ -1199,11 +1199,11 @@ Response (`200`, 节选):
   - 校验 compose 中 `r-engine` 构建上下文为根目录并使用 `services/r-engine/Dockerfile`。
 
 ### Changed Files
-- `bioid-analytics/docker-compose.yml`
-- `bioid-analytics/services/r-engine/Dockerfile`
-- `bioid-analytics/services/r-engine/analysis.R` (deleted)
-- `bioid-analytics/services/api/test/r.analysis.source.test.js`
-- `bioid-analytics/docs/devlog.md`
+- `cloud-fullstack-docker/docker-compose.yml`
+- `cloud-fullstack-docker/services/r-engine/Dockerfile`
+- `cloud-fullstack-docker/services/r-engine/analysis.R` (deleted)
+- `cloud-fullstack-docker/services/api/test/r.analysis.source.test.js`
+- `cloud-fullstack-docker/docs/devlog.md`
 
 ### Validation
 执行时间：2026-02-21
@@ -1254,12 +1254,12 @@ Response (`200`, 节选):
   - 新增 cursor 翻页用例
 
 ### Changed Files
-- `bioid-analytics/api/server.js`
-- `bioid-analytics/api/src/jobStore.js`
-- `bioid-analytics/api/src/jobManager.js`
-- `bioid-analytics/api/test/deEnrich.api.test.js`
-- `bioid-analytics/api/scripts/e2e-round4.sh`
-- `bioid-analytics/docs/devlog.md`
+- `cloud-fullstack-docker/api/server.js`
+- `cloud-fullstack-docker/api/src/jobStore.js`
+- `cloud-fullstack-docker/api/src/jobManager.js`
+- `cloud-fullstack-docker/api/test/deEnrich.api.test.js`
+- `cloud-fullstack-docker/api/scripts/e2e-round4.sh`
+- `cloud-fullstack-docker/docs/devlog.md`
 
 ### Validation
 执行时间：2026-02-21
@@ -1320,12 +1320,12 @@ Response (`200`, 节选):
   - 更新 retry 成功用例断言 `retryOf/retryCount`
 
 ### Changed Files
-- `bioid-analytics/api/src/jobManager.js`
-- `bioid-analytics/api/src/jobStore.js`
-- `bioid-analytics/api/server.js`
-- `bioid-analytics/api/test/deEnrich.api.test.js`
-- `bioid-analytics/db/init.sql`
-- `bioid-analytics/docs/devlog.md`
+- `cloud-fullstack-docker/api/src/jobManager.js`
+- `cloud-fullstack-docker/api/src/jobStore.js`
+- `cloud-fullstack-docker/api/server.js`
+- `cloud-fullstack-docker/api/test/deEnrich.api.test.js`
+- `cloud-fullstack-docker/db/init.sql`
+- `cloud-fullstack-docker/docs/devlog.md`
 
 ### Validation
 执行时间：2026-02-21
@@ -1375,12 +1375,12 @@ Response (`200`, 节选):
   - `jobStore` memory/postgres 继续持久化这些字段
 
 ### Changed Files
-- `bioid-analytics/api/server.js`
-- `bioid-analytics/api/src/jobManager.js`
-- `bioid-analytics/api/src/jobStore.js`
-- `bioid-analytics/api/test/deEnrich.api.test.js`
-- `bioid-analytics/db/init.sql`
-- `bioid-analytics/docs/devlog.md`
+- `cloud-fullstack-docker/api/server.js`
+- `cloud-fullstack-docker/api/src/jobManager.js`
+- `cloud-fullstack-docker/api/src/jobStore.js`
+- `cloud-fullstack-docker/api/test/deEnrich.api.test.js`
+- `cloud-fullstack-docker/db/init.sql`
+- `cloud-fullstack-docker/docs/devlog.md`
 
 ### Validation
 执行时间：2026-02-21
@@ -1442,12 +1442,12 @@ Response (`200`, 节选):
   - completed/unknown cancel 冲突与 404 测试
 
 ### Changed Files
-- `bioid-analytics/api/src/jobManager.js`
-- `bioid-analytics/api/server.js`
-- `bioid-analytics/api/src/jobStore.js`
-- `bioid-analytics/api/test/deEnrich.api.test.js`
-- `bioid-analytics/db/init.sql`
-- `bioid-analytics/docs/devlog.md`
+- `cloud-fullstack-docker/api/src/jobManager.js`
+- `cloud-fullstack-docker/api/server.js`
+- `cloud-fullstack-docker/api/src/jobStore.js`
+- `cloud-fullstack-docker/api/test/deEnrich.api.test.js`
+- `cloud-fullstack-docker/db/init.sql`
+- `cloud-fullstack-docker/docs/devlog.md`
 
 ### Validation
 执行时间：2026-02-21
@@ -1495,10 +1495,10 @@ Response (`200`, 节选):
   - `README.md` 新增 CI 工作流说明（Backend test + Buildx cache + smoke）
 
 ### Changed Files
-- `bioid-analytics/docker-compose.yml`
-- `bioid-analytics/services/r-engine/Dockerfile`
-- `bioid-analytics/README.md`
-- `bioid-analytics/docs/devlog.md`
+- `cloud-fullstack-docker/docker-compose.yml`
+- `cloud-fullstack-docker/services/r-engine/Dockerfile`
+- `cloud-fullstack-docker/README.md`
+- `cloud-fullstack-docker/docs/devlog.md`
 
 ### Validation
 执行时间：2026-02-21
@@ -1542,11 +1542,11 @@ Response (`200`, 节选):
   - 新增 `SKIP_BUILD=1` 选项，用于运行态回归时跳过耗时镜像构建
 
 ### Changed Files
-- `bioid-analytics/docker-compose.yml`
-- `bioid-analytics/services/r-engine/Dockerfile`
-- `bioid-analytics/scripts/compose-smoke.sh`
-- `bioid-analytics/docs/devlog.md`
-- `bioid-analytics/docs/review-log.md`
+- `cloud-fullstack-docker/docker-compose.yml`
+- `cloud-fullstack-docker/services/r-engine/Dockerfile`
+- `cloud-fullstack-docker/scripts/compose-smoke.sh`
+- `cloud-fullstack-docker/docs/devlog.md`
+- `cloud-fullstack-docker/docs/review-log.md`
 
 ### Validation
 执行时间：2026-02-21
@@ -1587,9 +1587,9 @@ Response (`200`, 节选):
 - 同步 `README.md` 的 CI 说明，明确 smoke 使用 `SKIP_API=1 SKIP_BUILD=1`。
 
 ### Changed Files
-- `bioid-analytics/.github/workflows/compose-smoke.yml`
-- `bioid-analytics/README.md`
-- `bioid-analytics/docs/devlog.md`
+- `cloud-fullstack-docker/.github/workflows/compose-smoke.yml`
+- `cloud-fullstack-docker/README.md`
+- `cloud-fullstack-docker/docs/devlog.md`
 
 ### Validation
 执行时间：2026-02-21
@@ -1631,9 +1631,9 @@ Response (`200`, 节选):
 - 同步 `README.md` CI 章节，新增 nightly full-smoke 说明。
 
 ### Changed Files
-- `bioid-analytics/.github/workflows/full-smoke-nightly.yml`
-- `bioid-analytics/README.md`
-- `bioid-analytics/docs/devlog.md`
+- `cloud-fullstack-docker/.github/workflows/full-smoke-nightly.yml`
+- `cloud-fullstack-docker/README.md`
+- `cloud-fullstack-docker/docs/devlog.md`
 
 ### Validation
 执行时间：2026-02-21
@@ -1678,11 +1678,11 @@ Response (`200`, 节选):
 - 更新 `README.md` CI 章节，补充上述重试/日志脚本与手动输入说明。
 
 ### Changed Files
-- `bioid-analytics/scripts/compose-up-retry.sh`
-- `bioid-analytics/scripts/collect-compose-logs.sh`
-- `bioid-analytics/.github/workflows/full-smoke-nightly.yml`
-- `bioid-analytics/README.md`
-- `bioid-analytics/docs/devlog.md`
+- `cloud-fullstack-docker/scripts/compose-up-retry.sh`
+- `cloud-fullstack-docker/scripts/collect-compose-logs.sh`
+- `cloud-fullstack-docker/.github/workflows/full-smoke-nightly.yml`
+- `cloud-fullstack-docker/README.md`
+- `cloud-fullstack-docker/docs/devlog.md`
 
 ### Validation
 执行时间：2026-02-21
@@ -1740,11 +1740,11 @@ Response (`200`, 节选):
   - 新增 weekly enrichment workflow 描述
 
 ### Changed Files
-- `bioid-analytics/scripts/compose-up-retry.sh`
-- `bioid-analytics/scripts/collect-compose-logs.sh`
-- `bioid-analytics/.github/workflows/full-smoke-enrichment-weekly.yml`
-- `bioid-analytics/README.md`
-- `bioid-analytics/docs/devlog.md`
+- `cloud-fullstack-docker/scripts/compose-up-retry.sh`
+- `cloud-fullstack-docker/scripts/collect-compose-logs.sh`
+- `cloud-fullstack-docker/.github/workflows/full-smoke-enrichment-weekly.yml`
+- `cloud-fullstack-docker/README.md`
+- `cloud-fullstack-docker/docs/devlog.md`
 
 ### Validation
 执行时间：2026-02-21
@@ -1795,10 +1795,10 @@ Response (`200`, 节选):
   - 补充 weekly enrichment workflow 的 backend 前置门禁说明。
 
 ### Changed Files
-- `bioid-analytics/.env.example`
-- `bioid-analytics/.github/workflows/full-smoke-enrichment-weekly.yml`
-- `bioid-analytics/README.md`
-- `bioid-analytics/docs/devlog.md`
+- `cloud-fullstack-docker/.env.example`
+- `cloud-fullstack-docker/.github/workflows/full-smoke-enrichment-weekly.yml`
+- `cloud-fullstack-docker/README.md`
+- `cloud-fullstack-docker/docs/devlog.md`
 
 ### Validation
 执行时间：2026-02-21
@@ -1850,12 +1850,12 @@ Response (`200`, 节选):
   - 补充 nightly/weekly 并发策略说明。
 
 ### Changed Files
-- `bioid-analytics/scripts/collect-compose-logs.sh`
-- `bioid-analytics/.github/workflows/compose-smoke.yml`
-- `bioid-analytics/.github/workflows/full-smoke-nightly.yml`
-- `bioid-analytics/.github/workflows/full-smoke-enrichment-weekly.yml`
-- `bioid-analytics/README.md`
-- `bioid-analytics/docs/devlog.md`
+- `cloud-fullstack-docker/scripts/collect-compose-logs.sh`
+- `cloud-fullstack-docker/.github/workflows/compose-smoke.yml`
+- `cloud-fullstack-docker/.github/workflows/full-smoke-nightly.yml`
+- `cloud-fullstack-docker/.github/workflows/full-smoke-enrichment-weekly.yml`
+- `cloud-fullstack-docker/README.md`
+- `cloud-fullstack-docker/docs/devlog.md`
 
 ### Validation
 执行时间：2026-02-22
@@ -1915,12 +1915,12 @@ Response (`200`, 节选):
   - CI 章节补充：分文件裁剪、`manifest` 的 SHA256、workflow summary 可见性。
 
 ### Changed Files
-- `bioid-analytics/scripts/collect-compose-logs.sh`
-- `bioid-analytics/.github/workflows/full-smoke-nightly.yml`
-- `bioid-analytics/.github/workflows/full-smoke-enrichment-weekly.yml`
-- `bioid-analytics/.env.example`
-- `bioid-analytics/README.md`
-- `bioid-analytics/docs/devlog.md`
+- `cloud-fullstack-docker/scripts/collect-compose-logs.sh`
+- `cloud-fullstack-docker/.github/workflows/full-smoke-nightly.yml`
+- `cloud-fullstack-docker/.github/workflows/full-smoke-enrichment-weekly.yml`
+- `cloud-fullstack-docker/.env.example`
+- `cloud-fullstack-docker/README.md`
+- `cloud-fullstack-docker/docs/devlog.md`
 
 ### Validation
 执行时间：2026-02-22
@@ -1985,12 +1985,12 @@ Response (`200`, 节选):
   - running cancel 用例升级为协作式长任务，校验中途取消不会执行到“slow task finished”
 
 ### Changed Files
-- `bioid-analytics/api/src/jobManager.js`
-- `bioid-analytics/api/src/modules/deEnrich.js`
-- `bioid-analytics/api/src/rRunner.js`
-- `bioid-analytics/api/r/local_de-enrich.R`
-- `bioid-analytics/api/test/deEnrich.api.test.js`
-- `bioid-analytics/docs/devlog.md`
+- `cloud-fullstack-docker/api/src/jobManager.js`
+- `cloud-fullstack-docker/api/src/modules/deEnrich.js`
+- `cloud-fullstack-docker/api/src/rRunner.js`
+- `cloud-fullstack-docker/api/r/local_de-enrich.R`
+- `cloud-fullstack-docker/api/test/deEnrich.api.test.js`
+- `cloud-fullstack-docker/docs/devlog.md`
 
 ### Validation
 执行时间：2026-02-21
@@ -2061,9 +2061,9 @@ Response (`200`, 节选):
   - 新增 `EXPECT_GO_ID/EXPECT_KEGG_ID` 开关：对 top id 做精确匹配断言
 
 ### Changed Files
-- `bioid-analytics/api/test/deEnrich.api.test.js`
-- `bioid-analytics/api/scripts/e2e-round4.sh`
-- `bioid-analytics/docs/devlog.md`
+- `cloud-fullstack-docker/api/test/deEnrich.api.test.js`
+- `cloud-fullstack-docker/api/scripts/e2e-round4.sh`
+- `cloud-fullstack-docker/docs/devlog.md`
 
 ### Validation
 执行时间：2026-02-21
@@ -2109,10 +2109,10 @@ Response (`200`, 节选):
 - 更新 `README.md` 与 `docs/version-control.md`，补充进度快照命令和常用开关示例。
 
 ### Changed Files
-- `bioid-analytics/scripts/progress-monitor.sh`
-- `bioid-analytics/README.md`
-- `bioid-analytics/docs/version-control.md`
-- `bioid-analytics/docs/devlog.md`
+- `cloud-fullstack-docker/scripts/progress-monitor.sh`
+- `cloud-fullstack-docker/README.md`
+- `cloud-fullstack-docker/docs/version-control.md`
+- `cloud-fullstack-docker/docs/devlog.md`
 
 ### Validation
 执行时间：2026-02-21
@@ -2153,11 +2153,11 @@ Response (`200`, 节选):
   - `docs/version-control.md` 增加进度快照产物与对比说明
 
 ### Changed Files
-- `bioid-analytics/scripts/progress-monitor.sh`
-- `bioid-analytics/.github/workflows/progress-monitor.yml`
-- `bioid-analytics/README.md`
-- `bioid-analytics/docs/version-control.md`
-- `bioid-analytics/docs/devlog.md`
+- `cloud-fullstack-docker/scripts/progress-monitor.sh`
+- `cloud-fullstack-docker/.github/workflows/progress-monitor.yml`
+- `cloud-fullstack-docker/README.md`
+- `cloud-fullstack-docker/docs/version-control.md`
+- `cloud-fullstack-docker/docs/devlog.md`
 
 ### Validation
 执行时间：2026-02-21
@@ -2202,11 +2202,11 @@ Response (`200`, 节选):
   - `docs/version-control.md` 增加 strict gate 与趋势说明
 
 ### Changed Files
-- `bioid-analytics/scripts/progress-monitor.sh`
-- `bioid-analytics/.github/workflows/progress-monitor.yml`
-- `bioid-analytics/README.md`
-- `bioid-analytics/docs/version-control.md`
-- `bioid-analytics/docs/devlog.md`
+- `cloud-fullstack-docker/scripts/progress-monitor.sh`
+- `cloud-fullstack-docker/.github/workflows/progress-monitor.yml`
+- `cloud-fullstack-docker/README.md`
+- `cloud-fullstack-docker/docs/version-control.md`
+- `cloud-fullstack-docker/docs/devlog.md`
 
 ### Validation
 执行时间：2026-02-21
@@ -2278,13 +2278,13 @@ Response (`200`, 节选):
   - 新增 `api-round4` workflow 说明与断言项说明
 
 ### Changed Files
-- `bioid-analytics/api/scripts/mock-r-engine.js`
-- `bioid-analytics/api/scripts/ci-round4-mock-remote.sh`
-- `bioid-analytics/api/scripts/e2e-round4.sh`
-- `bioid-analytics/api/package.json`
-- `bioid-analytics/.github/workflows/api-round4.yml`
-- `bioid-analytics/README.md`
-- `bioid-analytics/docs/devlog.md`
+- `cloud-fullstack-docker/api/scripts/mock-r-engine.js`
+- `cloud-fullstack-docker/api/scripts/ci-round4-mock-remote.sh`
+- `cloud-fullstack-docker/api/scripts/e2e-round4.sh`
+- `cloud-fullstack-docker/api/package.json`
+- `cloud-fullstack-docker/.github/workflows/api-round4.yml`
+- `cloud-fullstack-docker/README.md`
+- `cloud-fullstack-docker/docs/devlog.md`
 
 ### Validation
 执行时间：2026-02-21
@@ -2343,11 +2343,11 @@ Response (`200`, 节选):
   - 启用富集重依赖的构建方式
 
 ### Changed Files
-- `bioid-analytics/services/r-engine/Dockerfile`
-- `bioid-analytics/docker-compose.yml`
-- `bioid-analytics/.env.example`
-- `bioid-analytics/README.md`
-- `bioid-analytics/docs/devlog.md`
+- `cloud-fullstack-docker/services/r-engine/Dockerfile`
+- `cloud-fullstack-docker/docker-compose.yml`
+- `cloud-fullstack-docker/.env.example`
+- `cloud-fullstack-docker/README.md`
+- `cloud-fullstack-docker/docs/devlog.md`
 
 ### Validation
 执行时间：2026-02-21
@@ -2397,11 +2397,11 @@ Response (`200`, 节选):
   - `docs/version-control.md` 增加产物说明
 
 ### Changed Files
-- `bioid-analytics/scripts/progress-monitor.sh`
-- `bioid-analytics/.github/workflows/progress-monitor.yml`
-- `bioid-analytics/README.md`
-- `bioid-analytics/docs/version-control.md`
-- `bioid-analytics/docs/devlog.md`
+- `cloud-fullstack-docker/scripts/progress-monitor.sh`
+- `cloud-fullstack-docker/.github/workflows/progress-monitor.yml`
+- `cloud-fullstack-docker/README.md`
+- `cloud-fullstack-docker/docs/version-control.md`
+- `cloud-fullstack-docker/docs/devlog.md`
 
 ### Validation
 执行时间：2026-02-21
@@ -2452,12 +2452,12 @@ Response (`200`, 节选):
   - `docs/version-control.md` 增加产物/参数说明
 
 ### Changed Files
-- `bioid-analytics/scripts/progress-monitor.sh`
-- `bioid-analytics/scripts/review-gate.sh`
-- `bioid-analytics/.github/workflows/progress-monitor.yml`
-- `bioid-analytics/README.md`
-- `bioid-analytics/docs/version-control.md`
-- `bioid-analytics/docs/devlog.md`
+- `cloud-fullstack-docker/scripts/progress-monitor.sh`
+- `cloud-fullstack-docker/scripts/review-gate.sh`
+- `cloud-fullstack-docker/.github/workflows/progress-monitor.yml`
+- `cloud-fullstack-docker/README.md`
+- `cloud-fullstack-docker/docs/version-control.md`
+- `cloud-fullstack-docker/docs/devlog.md`
 
 ### Validation
 执行时间：2026-02-22
@@ -2514,11 +2514,11 @@ Response (`200`, 节选):
   - `README.md` 新增 `First Trial Run` 小节，给出首次启动与试运行命令序列。
 
 ### Changed Files
-- `bioid-analytics/.gitignore`
-- `bioid-analytics/scripts/review-gate.sh`
-- `bioid-analytics/scripts/progress-monitor.sh`
-- `bioid-analytics/README.md`
-- `bioid-analytics/docs/devlog.md`
+- `cloud-fullstack-docker/.gitignore`
+- `cloud-fullstack-docker/scripts/review-gate.sh`
+- `cloud-fullstack-docker/scripts/progress-monitor.sh`
+- `cloud-fullstack-docker/README.md`
+- `cloud-fullstack-docker/docs/devlog.md`
 
 ### Validation
 执行时间：2026-02-22
@@ -2554,9 +2554,9 @@ Response (`200`, 节选):
 
 ### Implemented
 - 目录与命名收尾：
-  - `services/api/package.json`、`services/frontend/package.json` 包名更新为 `bioid-analytics-*`。
-  - `docker-compose.yml` 保持 `name: bioid-analytics` 与 `bioid-analytics-*` 容器前缀。
-  - `.env.example` 默认 bucket 为 `bioid-analytics-artifacts`。
+  - `services/api/package.json`、`services/frontend/package.json` 包名更新为 `cloud-fullstack-docker-*`。
+  - `docker-compose.yml` 保持 `name: cloud-fullstack-docker` 与 `cloud-fullstack-docker-*` 容器前缀。
+  - `.env.example` 默认 bucket 为 `cloud-fullstack-docker-artifacts`。
 - 阶段 C 后端收口：
   - `services/api/server.js` 在 schema 初始化中补齐 `session_configs` 表与索引，修复 `analysis/run` 在 pg-mem 下的 500。
   - `services/api/src/modules/de-enrich.js` 放宽 JS fallback 最小分组样本约束为每组至少 1 个样本，保证最小上传样本集可完成 run。
@@ -2567,7 +2567,7 @@ Response (`200`, 节选):
   - 新增四图结果卡片（PCA/Correlation/Volcano/Enrichment）与 CSV/SVG/PNG/Meta 下载。
   - 新增 PNG 下载前端渲染（读取 `/png` payload 中的 SVG 转 canvas 导出）。
   - 错误展示改为“中文主信息 + EN detail”。
-  - localStorage key 从 `bioid.*` 迁移为 `bioid-analytics.*`，并做一次性旧 key 迁移。
+  - localStorage key 从 `bioid.*` 迁移为 `cloud-fullstack-docker.*`，并做一次性旧 key 迁移。
 - CI/workflow 同步：
   - `.github/workflows/compose-smoke.yml`、`full-smoke-enrichment-weekly.yml`、`progress-monitor.yml` 改为 `services/api` + `services/frontend`。
   - `progress-monitor` 脚本改为运行 `services/api` 测试 + `services/frontend` 构建。
@@ -2576,27 +2576,27 @@ Response (`200`, 节选):
   - 修复路径过替换残留（如 `services/frontend/api/services/r-engine`）。
 
 ### Changed Files
-- `bioid-analytics/services/api/server.js`
-- `bioid-analytics/services/api/src/modules/de-enrich.js`
-- `bioid-analytics/services/api/test/r.analysis.source.test.js`
-- `bioid-analytics/services/api/package.json`
-- `bioid-analytics/services/api/package-lock.json`
-- `bioid-analytics/services/frontend/src/app.jsx`
-- `bioid-analytics/services/frontend/src/app.css`
-- `bioid-analytics/services/frontend/src/i18n/zh-cn.js`
-- `bioid-analytics/services/frontend/package.json`
-- `bioid-analytics/services/frontend/package-lock.json`
-- `bioid-analytics/.github/workflows/compose-smoke.yml`
-- `bioid-analytics/.github/workflows/full-smoke-enrichment-weekly.yml`
-- `bioid-analytics/.github/workflows/progress-monitor.yml`
-- `bioid-analytics/scripts/progress-monitor.sh`
-- `bioid-analytics/scripts/review-gate.sh`
-- `bioid-analytics/README.md`
-- `bioid-analytics/docs/review-protocol.md`
-- `bioid-analytics/docs/review-log.md`
-- `bioid-analytics/docs/round5-release-checklist.md`
-- `bioid-analytics/docs/version-control.md`
-- `bioid-analytics/docs/devlog.md`
+- `cloud-fullstack-docker/services/api/server.js`
+- `cloud-fullstack-docker/services/api/src/modules/de-enrich.js`
+- `cloud-fullstack-docker/services/api/test/r.analysis.source.test.js`
+- `cloud-fullstack-docker/services/api/package.json`
+- `cloud-fullstack-docker/services/api/package-lock.json`
+- `cloud-fullstack-docker/services/frontend/src/app.jsx`
+- `cloud-fullstack-docker/services/frontend/src/app.css`
+- `cloud-fullstack-docker/services/frontend/src/i18n/zh-cn.js`
+- `cloud-fullstack-docker/services/frontend/package.json`
+- `cloud-fullstack-docker/services/frontend/package-lock.json`
+- `cloud-fullstack-docker/.github/workflows/compose-smoke.yml`
+- `cloud-fullstack-docker/.github/workflows/full-smoke-enrichment-weekly.yml`
+- `cloud-fullstack-docker/.github/workflows/progress-monitor.yml`
+- `cloud-fullstack-docker/scripts/progress-monitor.sh`
+- `cloud-fullstack-docker/scripts/review-gate.sh`
+- `cloud-fullstack-docker/README.md`
+- `cloud-fullstack-docker/docs/review-protocol.md`
+- `cloud-fullstack-docker/docs/review-log.md`
+- `cloud-fullstack-docker/docs/round5-release-checklist.md`
+- `cloud-fullstack-docker/docs/version-control.md`
+- `cloud-fullstack-docker/docs/devlog.md`
 
 ### Validation
 执行时间：2026-02-22

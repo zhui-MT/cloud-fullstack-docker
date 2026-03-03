@@ -1,5 +1,5 @@
 {
-  "name": "bioid-analytics-api",
+  "name": "cloud-fullstack-docker-api",
   "version": "1.0.0",
   "description": "Dockerized fullstack backend",
   "main": "server.js",
