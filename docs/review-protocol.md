@@ -29,7 +29,7 @@
 ## 4) 当前项目专用检查点
 
 - Compose 六服务：frontend/api/r-engine/redis/postgres/minio
-- `api` 服务构建入口必须来自 `./backend`
+- `api` 服务构建入口必须来自 `./services/api`
 - 所有服务存在健康检查与依赖关系
 - API 契约逐步收敛到：
   - POST /api/session
@@ -37,7 +37,9 @@
   - POST /api/config
   - POST /api/run/:module
   - GET /api/job/:id
-  - GET /api/artifact/:id
+  - GET /api/artifacts/:id/download
+  - POST /api/analysis/run
+  - GET /api/analysis/run/:runId
 - 分析参数必须支持配置版本（config_rev/config_hash）
 
 ## 5) 失败处理策略
@@ -48,7 +50,7 @@
 
 ## 6) 自动化执行
 
-- 本地门禁命令：`scripts/review_gate.sh round-name`
-- compose 集成烟测：`scripts/compose_smoke.sh`
-- 快照命令：`scripts/vc_snapshot.sh "chore: snapshot message"`
-- 安全回滚分支：`scripts/vc_rollback.sh baseline-v1`
+- 本地门禁命令：`scripts/review-gate.sh round-name`
+- compose 集成烟测：`scripts/compose-smoke.sh`
+- 快照命令：`scripts/vc-snapshot.sh "chore: snapshot message"`
+- 安全回滚分支：`scripts/vc-rollback.sh baseline-v1`
