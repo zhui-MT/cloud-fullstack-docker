@@ -4,11 +4,11 @@
 
 # Keep Docker config and r-engine runtime files
 !.dockerignore
-!r-engine/
-!r-engine/Dockerfile
-!r-engine/app.R
+!services/r-engine/
+!services/r-engine/Dockerfile
+!services/r-engine/app.R
 
 # Keep single shared R analysis source
-!backend/
-!backend/r/
-!backend/r/analysis.R
+!services/api/
+!services/api/r/
+!services/api/r/analysis.R

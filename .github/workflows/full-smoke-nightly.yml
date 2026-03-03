@@ -36,7 +36,7 @@ jobs:
           COMPOSE_UP_RETRIES: "1"
           COMPOSE_UP_RETRY_DELAY_SEC: "30"
           R_ENGINE_INSTALL_ENRICHMENT_PACKAGES: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.install_enrichment || '0' }}
-        run: scripts/compose_up_retry.sh
+        run: scripts/compose-up-retry.sh
 
       - name: Compose ps
         run: docker compose --env-file .env.example ps
@@ -45,7 +45,7 @@ jobs:
         env:
           SKIP_BUILD: "1"
           EXPECT_STORAGE_MODE: "blob"
-        run: scripts/compose_smoke.sh
+        run: scripts/compose-smoke.sh
 
       - name: Collect compose logs
         if: always()
@@ -54,7 +54,7 @@ jobs:
           COMPOSE_LOG_MAX_EVENTS_BYTES: "10485760"
           COMPOSE_LOG_TAIL_SERVICES_BYTES: "262144"
           COMPOSE_LOG_TAIL_EVENTS_BYTES: "524288"
-        run: scripts/collect_compose_logs.sh /tmp/compose-logs
+        run: scripts/collect-compose-logs.sh /tmp/compose-logs
 
       - name: Upload compose logs artifact
         if: always()

@@ -8,7 +8,7 @@ TARGET="${1:-}"
 ROLLBACK_BRANCH="${2:-rollback-$(date +%Y%m%d-%H%M%S)}"
 
 if [ -z "$TARGET" ]; then
-  echo "Usage: scripts/vc_rollback.sh <commit-or-tag> [rollback-branch-name]"
+  echo "Usage: scripts/vc-rollback.sh <commit-or-tag> [rollback-branch-name]"
   exit 1
 fi
 
@@ -19,7 +19,7 @@ fi
 
 if [ -n "$(git status --porcelain)" ]; then
   echo "FAIL: working tree is not clean. Run snapshot first:"
-  echo "  scripts/vc_snapshot.sh \"chore: pre-rollback snapshot\""
+  echo "  scripts/vc-snapshot.sh \"chore: pre-rollback snapshot\""
   exit 1
 fi
 

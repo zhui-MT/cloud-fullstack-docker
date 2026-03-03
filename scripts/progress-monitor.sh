@@ -101,7 +101,7 @@ if [[ -z "$changed_preview" ]]; then
   changed_preview="(clean)"
 fi
 
-round_lines="$(rg '^## ' docs/DEVLOG.md 2>/dev/null || true)"
+round_lines="$(rg '^## ' docs/devlog.md 2>/dev/null || true)"
 latest_round="$(printf '%s\n' "$round_lines" | tail -n 1)"
 recent_rounds="$(printf '%s\n' "$round_lines" | tail -n 5)"
 if [[ -z "$latest_round" ]]; then
@@ -137,16 +137,16 @@ api_test_fail="-"
 api_test_duration="-"
 api_test_log=""
 
-backend_test_status="SKIPPED"
-backend_test_pass="-"
-backend_test_fail="-"
-backend_test_duration="-"
-backend_test_log=""
+frontend_build_status="SKIPPED"
+frontend_build_pass="-"
+frontend_build_fail="-"
+frontend_build_duration="-"
+frontend_build_log=""
 
 if [[ "$RUN_TESTS" == "1" ]]; then
   api_test_log="$(mktemp)"
   TMP_FILES+=("$api_test_log")
-  if (cd "$ROOT_DIR/api" && npm test >"$api_test_log" 2>&1); then
+  if (cd "$ROOT_DIR/services/api" && npm test >"$api_test_log" 2>&1); then
     api_test_status="PASS"
   else
     api_test_status="FAIL"
@@ -155,16 +155,20 @@ if [[ "$RUN_TESTS" == "1" ]]; then
   api_test_fail="$(awk '/^# fail /{v=$3} END{if(v=="") print "-"; else print v}' "$api_test_log")"
   api_test_duration="$(awk '/^# duration_ms /{v=$3} END{if(v=="") print "-"; else print v "ms"}' "$api_test_log")"
 
-  backend_test_log="$(mktemp)"
-  TMP_FILES+=("$backend_test_log")
-  if (cd "$ROOT_DIR/backend" && npm test >"$backend_test_log" 2>&1); then
-    backend_test_status="PASS"
+  frontend_build_log="$(mktemp)"
+  TMP_FILES+=("$frontend_build_log")
+  frontend_build_started="$(node -e 'process.stdout.write(String(Date.now()))')"
+  if (cd "$ROOT_DIR/services/frontend" && npm run build >"$frontend_build_log" 2>&1); then
+    frontend_build_status="PASS"
+    frontend_build_pass="1"
+    frontend_build_fail="0"
   else
-    backend_test_status="FAIL"
+    frontend_build_status="FAIL"
+    frontend_build_pass="0"
+    frontend_build_fail="1"
   fi
-  backend_test_pass="$(awk '/^# pass /{v=$3} END{if(v=="") print "-"; else print v}' "$backend_test_log")"
-  backend_test_fail="$(awk '/^# fail /{v=$3} END{if(v=="") print "-"; else print v}' "$backend_test_log")"
-  backend_test_duration="$(awk '/^# duration_ms /{v=$3} END{if(v=="") print "-"; else print v "ms"}' "$backend_test_log")"
+  frontend_build_finished="$(node -e 'process.stdout.write(String(Date.now()))')"
+  frontend_build_duration="$((frontend_build_finished-frontend_build_started))ms"
 fi
 
 review_gate_status="SKIPPED"
@@ -173,7 +177,7 @@ if [[ "$RUN_GATE" == "1" ]]; then
   gate_log="$(mktemp)"
   TMP_FILES+=("$gate_log")
   gate_round="monitor-$(date '+%Y%m%d-%H%M%S')"
-  if scripts/review_gate.sh "$gate_round" >"$gate_log" 2>&1; then
+  if scripts/review-gate.sh "$gate_round" >"$gate_log" 2>&1; then
     review_gate_status="PASS"
   else
     review_gate_status="FAIL"
@@ -186,7 +190,7 @@ smoke_tail="(not executed)"
 if [[ "$RUN_SMOKE" == "1" ]]; then
   smoke_log="$(mktemp)"
   TMP_FILES+=("$smoke_log")
-  if SKIP_BUILD="$SMOKE_SKIP_BUILD" SKIP_HEALTH="$SMOKE_SKIP_HEALTH" scripts/compose_smoke.sh >"$smoke_log" 2>&1; then
+  if SKIP_BUILD="$SMOKE_SKIP_BUILD" SKIP_HEALTH="$SMOKE_SKIP_HEALTH" scripts/compose-smoke.sh >"$smoke_log" 2>&1; then
     smoke_status="PASS"
   else
     smoke_status="FAIL"
@@ -195,13 +199,13 @@ if [[ "$RUN_SMOKE" == "1" ]]; then
 fi
 
 overall_status="IN_PROGRESS"
-if [[ "$api_test_status" == "PASS" && "$backend_test_status" == "PASS" && "$review_gate_status" == "PASS" ]]; then
+if [[ "$api_test_status" == "PASS" && "$frontend_build_status" == "PASS" && "$review_gate_status" == "PASS" ]]; then
   overall_status="CODE_HEALTHY"
 fi
 if [[ "$smoke_status" == "FAIL" ]]; then
   overall_status="BLOCKED_ON_RUNTIME"
 fi
-if [[ "$api_test_status" == "FAIL" || "$backend_test_status" == "FAIL" || "$review_gate_status" == "FAIL" ]]; then
+if [[ "$api_test_status" == "FAIL" || "$frontend_build_status" == "FAIL" || "$review_gate_status" == "FAIL" ]]; then
   overall_status="BLOCKED_ON_QUALITY"
 fi
 
@@ -209,14 +213,14 @@ declare -a blockers=()
 if [[ "$api_test_status" == "FAIL" ]]; then
   blockers+=("api test failed")
 fi
-if [[ "$backend_test_status" == "FAIL" ]]; then
-  blockers+=("backend test failed")
+if [[ "$frontend_build_status" == "FAIL" ]]; then
+  blockers+=("frontend build failed")
 fi
 if [[ "$review_gate_status" == "FAIL" ]]; then
   blockers+=("review gate failed")
 fi
 if [[ "$smoke_status" == "FAIL" ]]; then
-  blockers+=("compose smoke failed (check runtime dependencies: api/db/redis/r-engine)")
+  blockers+=("compose smoke failed (check runtime dependencies: api/frontend/postgres/redis/r-engine/minio)")
 fi
 if [[ "$RUN_SMOKE" == "1" && "$docker_status" == "AVAILABLE" && "$running_services_count" == "0" ]]; then
   blockers+=("docker is available but no compose services are running")
@@ -262,7 +266,7 @@ fi
   echo
   echo "## Validation Matrix"
   echo "- api tests: ${api_test_status} (pass=${api_test_pass}, fail=${api_test_fail}, duration=${api_test_duration})"
-  echo "- backend tests: ${backend_test_status} (pass=${backend_test_pass}, fail=${backend_test_fail}, duration=${backend_test_duration})"
+  echo "- frontend build: ${frontend_build_status} (pass=${frontend_build_pass}, fail=${frontend_build_fail}, duration=${frontend_build_duration})"
   echo "- review gate: ${review_gate_status}"
   echo "- compose smoke: ${smoke_status}"
   echo
@@ -321,10 +325,10 @@ API_TEST_STATUS="$api_test_status" \
 API_TEST_PASS="$api_test_pass" \
 API_TEST_FAIL="$api_test_fail" \
 API_TEST_DURATION="$api_test_duration" \
-BACKEND_TEST_STATUS="$backend_test_status" \
-BACKEND_TEST_PASS="$backend_test_pass" \
-BACKEND_TEST_FAIL="$backend_test_fail" \
-BACKEND_TEST_DURATION="$backend_test_duration" \
+FRONTEND_BUILD_STATUS="$frontend_build_status" \
+FRONTEND_BUILD_PASS="$frontend_build_pass" \
+FRONTEND_BUILD_FAIL="$frontend_build_fail" \
+FRONTEND_BUILD_DURATION="$frontend_build_duration" \
 REVIEW_GATE_STATUS="$review_gate_status" \
 REVIEW_GATE_TAIL="$review_gate_tail" \
 SMOKE_STATUS="$smoke_status" \
@@ -412,11 +416,11 @@ const now = {
       fail: toInt(process.env.API_TEST_FAIL),
       duration_ms: toNullableNumberFromMs(process.env.API_TEST_DURATION),
     },
-    backend_tests: {
-      status: process.env.BACKEND_TEST_STATUS,
-      pass: toInt(process.env.BACKEND_TEST_PASS),
-      fail: toInt(process.env.BACKEND_TEST_FAIL),
-      duration_ms: toNullableNumberFromMs(process.env.BACKEND_TEST_DURATION),
+    frontend_build: {
+      status: process.env.FRONTEND_BUILD_STATUS,
+      pass: toInt(process.env.FRONTEND_BUILD_PASS),
+      fail: toInt(process.env.FRONTEND_BUILD_FAIL),
+      duration_ms: toNullableNumberFromMs(process.env.FRONTEND_BUILD_DURATION),
     },
     review_gate: {
       status: process.env.REVIEW_GATE_STATUS,
@@ -566,8 +570,8 @@ let changedSamples = 0;
 let blockersActiveCount = 0;
 let apiDurationTotal = 0;
 let apiDurationSamples = 0;
-let backendDurationTotal = 0;
-let backendDurationSamples = 0;
+let frontendBuildDurationTotal = 0;
+let frontendBuildDurationSamples = 0;
 
 for (const { data } of snapshots) {
   const status = data.overall_status || 'unknown';
@@ -593,16 +597,17 @@ for (const { data } of snapshots) {
     apiDurationSamples += 1;
   }
 
-  const backendDuration = Number(data?.validation?.backend_tests?.duration_ms);
-  if (Number.isFinite(backendDuration)) {
-    backendDurationTotal += backendDuration;
-    backendDurationSamples += 1;
+  const frontendBuildDuration = Number(data?.validation?.frontend_build?.duration_ms);
+  if (Number.isFinite(frontendBuildDuration)) {
+    frontendBuildDurationTotal += frontendBuildDuration;
+    frontendBuildDurationSamples += 1;
   }
 }
 
 const avgChanged = changedSamples > 0 ? (changedTotal / changedSamples).toFixed(2) : '-';
 const avgApiDuration = apiDurationSamples > 0 ? (apiDurationTotal / apiDurationSamples).toFixed(2) : '-';
-const avgBackendDuration = backendDurationSamples > 0 ? (backendDurationTotal / backendDurationSamples).toFixed(2) : '-';
+const avgFrontendBuildDuration =
+  frontendBuildDurationSamples > 0 ? (frontendBuildDurationTotal / frontendBuildDurationSamples).toFixed(2) : '-';
 const sortedBlockers = Array.from(blockerCounts.entries()).sort((a, b) => b[1] - a[1]);
 
 const lines = [];
@@ -623,7 +628,7 @@ if (snapshots.length === 0) {
   lines.push(`- Snapshots with blockers: ${blockersActiveCount}/${snapshots.length}`);
   lines.push(`- Distinct blocker signatures: ${sortedBlockers.length}`);
   lines.push(`- Average api test duration (ms): ${avgApiDuration}`);
-  lines.push(`- Average backend test duration (ms): ${avgBackendDuration}`);
+  lines.push(`- Average frontend build duration (ms): ${avgFrontendBuildDuration}`);
   lines.push('');
   lines.push('## Blocker Hotspots');
   if (sortedBlockers.length === 0) {
@@ -637,7 +642,7 @@ if (snapshots.length === 0) {
   }
   lines.push('');
   lines.push('## Recent Snapshots');
-  lines.push('| UTC | Status | Changed Files | Blockers | API Tests | Backend Tests |');
+  lines.push('| UTC | Status | Changed Files | Blockers | API Tests | Frontend Build |');
   lines.push('| --- | --- | ---: | ---: | --- | --- |');
 
   for (const { file, data } of snapshots) {
@@ -646,8 +651,8 @@ if (snapshots.length === 0) {
     const changed = data?.working_tree?.total_changed_files ?? '-';
     const blockers = Array.isArray(data.blockers) ? data.blockers.length : 0;
     const apiStatus = data?.validation?.api_tests?.status || '-';
-    const backendStatus = data?.validation?.backend_tests?.status || '-';
-    lines.push(`| ${utc} | ${status} | ${changed} | ${blockers} | ${apiStatus} | ${backendStatus} |`);
+    const frontendBuildStatus = data?.validation?.frontend_build?.status || '-';
+    lines.push(`| ${utc} | ${status} | ${changed} | ${blockers} | ${apiStatus} | ${frontendBuildStatus} |`);
   }
   lines.push('');
 }
@@ -680,13 +685,13 @@ if [[ "$SAVE_HISTORY" == "1" ]]; then
 fi
 
 api_status_num="$(status_to_num "$api_test_status")"
-backend_status_num="$(status_to_num "$backend_test_status")"
+frontend_status_num="$(status_to_num "$frontend_build_status")"
 gate_status_num="$(status_to_num "$review_gate_status")"
 smoke_status_num="$(status_to_num "$smoke_status")"
 docker_status_num="$(status_to_num "$docker_status")"
 overall_status_num="$(status_to_num "$overall_status")"
 api_duration_num="$(duration_to_num "$api_test_duration")"
-backend_duration_num="$(duration_to_num "$backend_test_duration")"
+frontend_duration_num="$(duration_to_num "$frontend_build_duration")"
 blockers_total="${#blockers[@]}"
 blockers_active=0
 if [[ "$blockers_total" -gt 0 ]]; then
@@ -721,9 +726,9 @@ progress_blockers_active $blockers_active
 # HELP progress_api_tests_status Numeric api test status.
 # TYPE progress_api_tests_status gauge
 progress_api_tests_status $api_status_num
-# HELP progress_backend_tests_status Numeric backend test status.
-# TYPE progress_backend_tests_status gauge
-progress_backend_tests_status $backend_status_num
+# HELP progress_frontend_build_status Numeric frontend build status.
+# TYPE progress_frontend_build_status gauge
+progress_frontend_build_status $frontend_status_num
 # HELP progress_review_gate_status Numeric review gate status.
 # TYPE progress_review_gate_status gauge
 progress_review_gate_status $gate_status_num
@@ -736,9 +741,9 @@ progress_docker_daemon_status $docker_status_num
 # HELP progress_api_test_duration_ms API test duration in ms.
 # TYPE progress_api_test_duration_ms gauge
 progress_api_test_duration_ms $api_duration_num
-# HELP progress_backend_test_duration_ms Backend test duration in ms.
-# TYPE progress_backend_test_duration_ms gauge
-progress_backend_test_duration_ms $backend_duration_num
+# HELP progress_frontend_build_duration_ms Frontend build duration in ms.
+# TYPE progress_frontend_build_duration_ms gauge
+progress_frontend_build_duration_ms $frontend_duration_num
 # HELP progress_running_services_count Number of running compose services.
 # TYPE progress_running_services_count gauge
 progress_running_services_count $running_services_count
@@ -757,8 +762,8 @@ OVERALL_STATUS="$overall_status" \
 OVERALL_STATUS_NUM="$overall_status_num" \
 API_TEST_STATUS="$api_test_status" \
 API_TEST_STATUS_NUM="$api_status_num" \
-BACKEND_TEST_STATUS="$backend_test_status" \
-BACKEND_TEST_STATUS_NUM="$backend_status_num" \
+FRONTEND_BUILD_STATUS="$frontend_build_status" \
+FRONTEND_BUILD_STATUS_NUM="$frontend_status_num" \
 REVIEW_GATE_STATUS="$review_gate_status" \
 REVIEW_GATE_STATUS_NUM="$gate_status_num" \
 SMOKE_STATUS="$smoke_status" \
@@ -772,7 +777,7 @@ UNTRACKED_CHANGES="$untracked_changes" \
 BLOCKERS_TOTAL="$blockers_total" \
 BLOCKERS_ACTIVE="$blockers_active" \
 API_TEST_DURATION_NUM="$api_duration_num" \
-BACKEND_TEST_DURATION_NUM="$backend_duration_num" \
+FRONTEND_BUILD_DURATION_NUM="$frontend_duration_num" \
 RUNNING_SERVICES_COUNT="$running_services_count" \
 HISTORY_SNAPSHOTS_TOTAL="$history_snapshot_count" \
 HISTORY_PRUNED_COUNT="$history_pruned_count" \
@@ -808,10 +813,10 @@ const payload = {
       code: toNum(process.env.API_TEST_STATUS_NUM),
       duration_ms: toNum(process.env.API_TEST_DURATION_NUM),
     },
-    backend_tests: {
-      status: process.env.BACKEND_TEST_STATUS,
-      code: toNum(process.env.BACKEND_TEST_STATUS_NUM),
-      duration_ms: toNum(process.env.BACKEND_TEST_DURATION_NUM),
+    frontend_build: {
+      status: process.env.FRONTEND_BUILD_STATUS,
+      code: toNum(process.env.FRONTEND_BUILD_STATUS_NUM),
+      duration_ms: toNum(process.env.FRONTEND_BUILD_DURATION_NUM),
     },
     review_gate: {
       status: process.env.REVIEW_GATE_STATUS,

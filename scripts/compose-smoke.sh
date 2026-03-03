@@ -75,7 +75,7 @@ session_json="$(curl -fsS -X POST "${API_URL}/api/session" \
   -d '{"name":"compose-smoke"}')"
 session_id="$(json_field "$session_json" "sessionId")"
 
-sample_file="${ROOT_DIR}/backend/samples/fragpipe_protein.tsv"
+sample_file="${ROOT_DIR}/services/api/samples/fragpipe-protein.tsv"
 if [[ ! -f "$sample_file" ]]; then
   echo "Missing sample file: $sample_file"
   exit 1

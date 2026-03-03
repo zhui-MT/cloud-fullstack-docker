@@ -22,15 +22,15 @@ jobs:
           node-version: 20
           cache: npm
           cache-dependency-path: |
-            api/package-lock.json
-            backend/package-lock.json
+            services/api/package-lock.json
+            services/frontend/package-lock.json
 
       - name: Install api dependencies
-        working-directory: api
+        working-directory: services/api
         run: npm ci
 
-      - name: Install backend dependencies
-        working-directory: backend
+      - name: Install frontend dependencies
+        working-directory: services/frontend
         run: npm ci
 
       - name: Generate progress snapshot
@@ -42,7 +42,7 @@ jobs:
           HISTORY_RETENTION_DAYS: "14"
           HISTORY_RETENTION_COUNT: "200"
           METRICS_OUTPUT_FILE: "docs/PROGRESS_METRICS.prom"
-        run: scripts/progress_monitor.sh
+        run: scripts/progress-monitor.sh
 
       - name: Upload progress snapshot artifact
         uses: actions/upload-artifact@v4

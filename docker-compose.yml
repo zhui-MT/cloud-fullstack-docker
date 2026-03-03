@@ -1,7 +1,9 @@
+name: bioid-analytics
+
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: bioid-postgres
+    container_name: bioid-analytics-postgres
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -19,7 +21,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: bioid-redis
+    container_name: bioid-analytics-redis
     ports:
       - "${REDIS_PORT}:6379"
     volumes:
@@ -32,7 +34,7 @@ services:
 
   minio:
     image: minio/minio:latest
-    container_name: bioid-minio
+    container_name: bioid-analytics-minio
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
@@ -50,7 +52,7 @@ services:
 
   minio-init:
     image: minio/mc:latest
-    container_name: bioid-minio-init
+    container_name: bioid-analytics-minio-init
     depends_on:
       minio:
         condition: service_healthy
@@ -61,18 +63,18 @@ services:
       UPLOAD_BLOB_BUCKET: ${UPLOAD_BLOB_BUCKET}
       UPLOAD_BLOB_POLICY: ${UPLOAD_BLOB_POLICY}
     volumes:
-      - ./scripts/minio_init.sh:/usr/local/bin/minio_init.sh:ro
-    entrypoint: ["/bin/sh", "/usr/local/bin/minio_init.sh"]
+      - ./scripts/minio-init.sh:/usr/local/bin/minio-init.sh:ro
+    entrypoint: ["/bin/sh", "/usr/local/bin/minio-init.sh"]
     restart: "no"
 
   r-engine:
     build:
       context: .
-      dockerfile: r-engine/Dockerfile
+      dockerfile: services/r-engine/Dockerfile
       args:
         R_ENGINE_CRAN_REPO: ${R_ENGINE_CRAN_REPO:-https://cloud.r-project.org}
         R_ENGINE_INSTALL_ENRICHMENT_PACKAGES: ${R_ENGINE_INSTALL_ENRICHMENT_PACKAGES:-0}
-    container_name: bioid-r-engine
+    container_name: bioid-analytics-r-engine
     ports:
       - "${R_ENGINE_PORT}:8000"
     healthcheck:
@@ -83,9 +85,9 @@ services:
 
   api:
     build:
-      context: ./backend
+      context: ./services/api
       dockerfile: Dockerfile
-    container_name: bioid-api
+    container_name: bioid-analytics-api
     environment:
       PORT: 4000
       DB_HOST: postgres
@@ -110,7 +112,7 @@ services:
     ports:
       - "${API_PORT}:4000"
     volumes:
-      - ./backend:/app
+      - ./services/api:/app
       - /app/node_modules
     depends_on:
       postgres:
@@ -131,15 +133,15 @@ services:
 
   frontend:
     build:
-      context: ./frontend
+      context: ./services/frontend
       dockerfile: Dockerfile
-    container_name: bioid-frontend
+    container_name: bioid-analytics-frontend
     environment:
       VITE_API_URL: http://localhost:${API_PORT}
     ports:
       - "${FRONTEND_PORT}:5173"
     volumes:
-      - ./frontend:/app
+      - ./services/frontend:/app
       - /app/node_modules
     depends_on:
       api:

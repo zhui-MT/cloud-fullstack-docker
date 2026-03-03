@@ -13,7 +13,7 @@ if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   exit 1
 fi
 
-CHANGED_FILES="$(git status --porcelain | awk '{print $2}' | sed '/^$/d' || true)"
+CHANGED_FILES="$(git status --porcelain | sed -E 's/^.. //' | sed -E 's/.* -> //' | sed '/^$/d' || true)"
 
 if [ -z "$CHANGED_FILES" ]; then
   WARNINGS+=("no working-tree changes detected")
@@ -22,8 +22,8 @@ fi
 # Treat docs/env/scripts/rendered README assets as non-code changes for the DEVLOG gate.
 CODE_CHANGES="$(printf '%s\n' "$CHANGED_FILES" | grep -Ev '^(docs/|README\.md$|README\.html$|README_files/|\.env(\.example)?$|\.gitignore$|scripts/)' || true)"
 if [ -n "$CODE_CHANGES" ]; then
-  if ! printf '%s\n' "$CHANGED_FILES" | grep -q '^docs/DEVLOG.md$'; then
-    ERRORS+=("code changed but docs/DEVLOG.md was not updated")
+  if ! printf '%s\n' "$CHANGED_FILES" | grep -q '^docs/devlog.md$'; then
+    ERRORS+=("code changed but docs/devlog.md was not updated")
   fi
 fi
 
@@ -38,8 +38,8 @@ else
       in_api && /context:/ { print $2; exit }
       in_api && /^[^ ]/ { in_api=0 }
     ' /tmp/review_gate_compose.out)"
-    if [[ -z "$api_context" || "$api_context" != */backend ]]; then
-      ERRORS+=("compose api service must build from ./backend (current: ${api_context:-unknown})")
+    if [[ -z "$api_context" || "$api_context" != */services/api ]]; then
+      ERRORS+=("compose api service must build from ./services/api (current: ${api_context:-unknown})")
     fi
   fi
 fi

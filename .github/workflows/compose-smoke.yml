@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  backend-and-compose-smoke:
+  service-tests-and-compose-smoke:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -24,15 +24,25 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: backend/package-lock.json
+          cache-dependency-path: |
+            services/api/package-lock.json
+            services/frontend/package-lock.json
 
-      - name: Install backend dependencies
-        working-directory: backend
+      - name: Install API dependencies
+        working-directory: services/api
         run: npm ci
 
-      - name: Run backend tests
-        working-directory: backend
+      - name: Run API tests
+        working-directory: services/api
         run: npm test
+
+      - name: Install frontend dependencies
+        working-directory: services/frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: services/frontend
+        run: npm run build
 
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -41,7 +51,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: r-engine/Dockerfile
+          file: services/r-engine/Dockerfile
           push: false
           tags: local/r-engine:ci
           cache-from: type=gha
@@ -53,4 +63,4 @@ jobs:
           SKIP_BUILD: "1"
           DOCKER_BUILDKIT: "1"
           COMPOSE_DOCKER_CLI_BUILD: "1"
-        run: scripts/compose_smoke.sh
+        run: scripts/compose-smoke.sh

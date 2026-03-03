@@ -52,8 +52,8 @@ RUN set -eux; \
     fi
 
 WORKDIR /app
-COPY r-engine/app.R /app/app.R
-COPY backend/r/analysis.R /app/analysis.R
+COPY services/r-engine/app.R /app/app.R
+COPY services/api/r/analysis.R /app/analysis.R
 
 EXPOSE 8000
 CMD ["R", "-e", "pr <- plumber::pr('/app/app.R'); pr$run(host='0.0.0.0', port=8000)"]
